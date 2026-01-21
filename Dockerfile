@@ -1,8 +1,9 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
-COPY . /var/www/html/
+WORKDIR /app
 
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
+COPY . .
 
-EXPOSE 80
+EXPOSE 10000
+
+CMD ["php", "-S", "0.0.0.0:10000", "-t", "."]

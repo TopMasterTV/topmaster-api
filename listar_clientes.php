@@ -1,25 +1,23 @@
 <?php
 header('Content-Type: application/json');
 
-// Pega a URL do banco do Render
-$DATABASE_URL = getenv("DATABASE_URL");
+$URL = getenv('URL_DO_BANCO_DE_DADOS');
 
-if (!$DATABASE_URL) {
+if (!$URL) {
     echo json_encode([
         "success" => false,
-        "message" => "DATABASE_URL não definida"
+        "message" => "URL_DO_BANCO_DE_DADOS não definida"
     ]);
     exit;
 }
 
-// Quebra a URL do banco
-$db = parse_url($DATABASE_URL);
+$db = parse_url($URL);
 
-$host = $db["host"];
-$port = $db["port"] ?? 5432;
-$dbname = ltrim($db["path"], "/");
-$user = $db["user"];
-$pass = $db["pass"];
+$host = $db['host'];
+$port = $db['port'] ?? 5432;
+$dbname = ltrim($db['path'], '/');
+$user = $db['user'];
+$pass = $db['pass'];
 
 try {
     $pdo = new PDO(
@@ -29,20 +27,17 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $sql = "SELECT id, nome, usuario, m3u_url, criado_em FROM clientes ORDER BY id DESC";
-    $stmt = $pdo->query($sql);
+    $stmt = $pdo->query("SELECT id, nome, usuario, m3u_url, criado_em FROM clientes ORDER BY id DESC");
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
         "success" => true,
-        "total" => count($clientes),
         "clientes" => $clientes
     ]);
 
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao listar clientes",
-        "erro" => $e->getMessage()
+        "message" => "Erro ao listar clientes"
     ]);
 }

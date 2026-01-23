@@ -11,11 +11,18 @@ if (!$databaseUrl) {
 
 $db = parse_url($databaseUrl);
 
-$host = $db['host'];
-$port = $db['port'];
-$dbname = ltrim($db['path'], '/');
-$user = $db['user'];
-$pass = $db['pass'];
+$host   = $db['host'] ?? null;
+$port   = $db['port'] ?? 5432; // 👈 PORTA PADRÃO
+$dbname = isset($db['path']) ? ltrim($db['path'], '/') : null;
+$user   = $db['user'] ?? null;
+$pass   = $db['pass'] ?? null;
+
+if (!$host || !$dbname || !$user || !$pass) {
+    die(json_encode([
+        "success" => false,
+        "message" => "Dados de conexão incompletos"
+    ]));
+}
 
 try {
     $pdo = new PDO(
@@ -31,6 +38,6 @@ try {
     die(json_encode([
         "success" => false,
         "message" => "Erro ao conectar ao banco",
-        "error" => $e->getMessage()
+        "error"   => $e->getMessage()
     ]));
 }

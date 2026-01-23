@@ -1,7 +1,7 @@
 <?php
 header('Content-Type: application/json');
 
-require_once 'db.php';
+require_once _DIR_ . "/db.php";
 
 $nome    = $_POST['nome']    ?? '';
 $usuario = $_POST['usuario'] ?? '';

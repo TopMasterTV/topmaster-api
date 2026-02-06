@@ -2,15 +2,21 @@
 header("Content-Type: application/json");
 
 /* =========================
-   RECEBE DADOS
+   RECEBE DADOS (POST ou GET)
    ========================= */
-$nome     = $_POST['nome']     ?? '';
-$usuario  = $_POST['usuario']  ?? '';
-$senha    = $_POST['senha']    ?? '';
-$m3u_url  = $_POST['m3u_url']  ?? '';
-$admin_id = $_POST['admin_id'] ?? '';
+$nome     = $_POST['nome']     ?? $_GET['nome']     ?? '';
+$usuario  = $_POST['usuario']  ?? $_GET['usuario']  ?? '';
+$senha    = $_POST['senha']    ?? $_GET['senha']    ?? '';
+$m3u_url  = $_POST['m3u_url']  ?? $_GET['m3u_url']  ?? '';
+$admin_id = $_POST['admin_id'] ?? $_GET['admin_id'] ?? '';
 
-if ($nome === '' || $usuario === '' || $senha === '' || $m3u_url === '' || $admin_id === '') {
+if (
+    $nome === '' ||
+    $usuario === '' ||
+    $senha === '' ||
+    $m3u_url === '' ||
+    $admin_id === ''
+) {
     echo json_encode([
         "success" => false,
         "message" => "Todos os campos são obrigatórios"
@@ -33,11 +39,11 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
-$host = $db['host'];
-$port = $db['port'] ?? 5432;
+$host   = $db['host'];
+$port   = $db['port'] ?? 5432;
 $dbname = ltrim($db['path'], '/');
-$user = $db['user'];
-$pass = $db['pass'];
+$user   = $db['user'];
+$pass   = $db['pass'];
 
 try {
     $pdo = new PDO(
@@ -80,7 +86,6 @@ try {
 } catch (PDOException $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao criar cliente",
-        "error"   => $e->getMessage()
+        "message" => "Erro ao criar cliente"
     ]);
 }

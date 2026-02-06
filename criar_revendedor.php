@@ -1,7 +1,7 @@
 <?php
 header('Content-Type: application/json');
 
-require_once _DIR_ . "/db.php";
+require_once dirname(_FILE_) . "/db.php";
 
 $nome     = $_POST['nome']     ?? '';
 $usuario  = $_POST['usuario']  ?? '';
@@ -17,8 +17,10 @@ if ($nome === '' || $usuario === '' || $senha === '' || $whatsapp === '') {
 }
 
 try {
-    // 🔎 verifica se usuário já existe
-    $check = $pdo->prepare("SELECT id FROM revendedores WHERE usuario = :usuario");
+    // verifica se usuário já existe
+    $check = $pdo->prepare(
+        "SELECT id FROM revendedores WHERE usuario = :usuario"
+    );
     $check->execute([':usuario' => $usuario]);
 
     if ($check->fetch()) {
@@ -29,7 +31,7 @@ try {
         exit;
     }
 
-    // ✅ INSERE REVENDEDOR (SEM HASH – compatível com Flutter)
+    // insere revendedor
     $stmt = $pdo->prepare("
         INSERT INTO revendedores (nome, usuario, senha, whatsapp)
         VALUES (:nome, :usuario, :senha, :whatsapp)

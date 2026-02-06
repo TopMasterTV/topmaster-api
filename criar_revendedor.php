@@ -1,30 +1,13 @@
 <?php
-header("Content-Type: application/json");
+header('Content-Type: application/json');
 
-/* =========================
-   RECEBE DADOS
-   ========================= */
-$nome    = $_POST['nome']    ?? '';
-$usuario = $_POST['usuario'] ?? '';
-$senha   = $_POST['senha']   ?? '';
-
-if ($nome === '' || $usuario === '' || $senha === '') {
-    echo json_encode([
-        "success" => false,
-        "message" => "Todos os campos são obrigatórios"
-    ]);
-    exit;
-}
-
-/* =========================
-   CONEXÃO COM BANCO
-   ========================= */
+// conexão direta (sem _DIR_)
 $DATABASE_URL = getenv("DATABASE_URL");
 
 if (!$DATABASE_URL) {
     echo json_encode([
-        "success" => false,
-        "message" => "DATABASE_URL não definida"
+        'success' => false,
+        'message' => 'DATABASE_URL não definida'
     ]);
     exit;
 }
@@ -46,41 +29,49 @@ try {
     );
 } catch (Exception $e) {
     echo json_encode([
-        "success" => false,
-        "message" => "Erro ao conectar ao banco"
+        'success' => false,
+        'message' => 'Erro ao conectar ao banco'
     ]);
     exit;
 }
 
-/* =========================
-   CRIA REVENDEDOR
-   ========================= */
+// aceita GET e POST
+$nome    = $_REQUEST['nome']    ?? '';
+$usuario = $_REQUEST['usuario'] ?? '';
+$senha   = $_REQUEST['senha']   ?? '';
+
+if ($nome === '' || $usuario === '' || $senha === '') {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Todos os campos são obrigatórios'
+    ]);
+    exit;
+}
+
 $tipo = 'revendedor';
 $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
 try {
-    $sql = "
+    $stmt = $pdo->prepare("
         INSERT INTO admins (nome, usuario, senha, tipo)
         VALUES (:nome, :usuario, :senha, :tipo)
-    ";
+    ");
 
-    $stmt = $pdo->prepare($sql);
     $stmt->execute([
-        ":nome"    => $nome,
-        ":usuario" => $usuario,
-        ":senha"   => $senha_hash,
-        ":tipo"    => $tipo
+        ':nome'    => $nome,
+        ':usuario' => $usuario,
+        ':senha'   => $senha_hash,
+        ':tipo'    => $tipo
     ]);
 
     echo json_encode([
-        "success" => true,
-        "message" => "Revendedor criado com sucesso"
+        'success' => true,
+        'message' => 'Revendedor criado com sucesso'
     ]);
-
 } catch (PDOException $e) {
     echo json_encode([
-        "success" => false,
-        "message" => "Erro ao criar revendedor",
-        "error"   => $e->getMessage()
+        'success' => false,
+        'message' => 'Erro ao criar revendedor',
+        'erro' => $e->getMessage()
     ]);
 }

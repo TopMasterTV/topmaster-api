@@ -1,5 +1,6 @@
 <?php
 header("Content-Type: application/json");
+ob_clean();
 
 /* =========================
    RECEBE DADOS
@@ -90,13 +91,12 @@ if (!password_verify($senha, $admin['senha'])) {
 }
 
 /* =========================
-   LOGIN OK
+   LOGIN OK (FORMATO QUE O FLUTTER ESPERA)
    ========================= */
 echo json_encode([
-    "success" => true,
-    "admin" => [
-        "id"      => $admin['id'],
-        "usuario" => $admin['usuario'],
-        "tipo"    => $admin['tipo']
-    ]
+    "success"   => true,
+    "admin_id" => (int) $admin['id'],
+    "usuario"  => $admin['usuario'],
+    "tipo"     => $admin['tipo']
 ]);
+exit;

@@ -4,8 +4,8 @@ header("Content-Type: application/json");
 /* =========================
    RECEBE DADOS
    ========================= */
-$usuario = $_POST['usuario'] ?? '';
-$senha   = $_POST['senha']   ?? '';
+$usuario = $_REQUEST['usuario'] ?? '';
+$senha   = $_REQUEST['senha']   ?? '';
 
 if ($usuario === '' || $senha === '') {
     echo json_encode([

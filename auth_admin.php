@@ -1,12 +1,31 @@
 <?php
-header("Content-Type: application/json");
-ob_clean();
 
-/* =========================
-   RECEBE DADOS
-   ========================= */
+// =========================
+// HEADERS (CORS + JSON)
+// =========================
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type");
+header("Content-Type: application/json; charset=UTF-8");
+
+// Preflight CORS
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// =========================
+// LIMPA QUALQUER SAÍDA
+// =========================
+while (ob_get_level()) {
+    ob_end_clean();
+}
+
+// =========================
+// RECEBE DADOS
+// =========================
 $usuario = $_POST['usuario'] ?? '';
-$senha   = $_POST['senha']   ?? '';
+$senha   = $_POST['senha'] ?? '';
 
 if ($usuario === '' || $senha === '') {
     echo json_encode([
@@ -16,9 +35,9 @@ if ($usuario === '' || $senha === '') {
     exit;
 }
 
-/* =========================
-   CONEXÃO COM BANCO (RENDER)
-   ========================= */
+// =========================
+// CONEXÃO COM BANCO (RENDER)
+// =========================
 $DATABASE_URL = getenv("DATABASE_URL");
 
 if (!$DATABASE_URL) {
@@ -31,11 +50,19 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
-$host   = $db['host'];
+$host   = $db['host'] ?? null;
 $port   = $db['port'] ?? 5432;
-$dbname = ltrim($db['path'], '/');
-$user   = $db['user'];
-$pass   = $db['pass'];
+$dbname = isset($db['path']) ? ltrim($db['path'], '/') : null;
+$user   = $db['user'] ?? null;
+$pass   = $db['pass'] ?? null;
+
+if (!$host || !$dbname || !$user || !$pass) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Configuração do banco inválida"
+    ]);
+    exit;
+}
 
 try {
     $pdo = new PDO(
@@ -47,17 +74,17 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]
     );
-} catch (Exception $e) {
+} catch (Throwable $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao conectar ao banco de dados"
+        "message" => "Erro ao conectar ao banco"
     ]);
     exit;
 }
 
-/* =========================
-   BUSCA ADMIN
-   ========================= */
+// =========================
+// BUSCA ADMIN
+// =========================
 $stmt = $pdo->prepare("
     SELECT id, usuario, senha, tipo
     FROM admins
@@ -79,9 +106,9 @@ if (!$admin) {
     exit;
 }
 
-/* =========================
-   VERIFICA SENHA
-   ========================= */
+// =========================
+// VERIFICA SENHA
+// =========================
 if (!password_verify($senha, $admin['senha'])) {
     echo json_encode([
         "success" => false,
@@ -90,13 +117,14 @@ if (!password_verify($senha, $admin['senha'])) {
     exit;
 }
 
-/* =========================
-   LOGIN OK (FORMATO QUE O FLUTTER ESPERA)
-   ========================= */
+// =========================
+// LOGIN OK (FORMATO LIMPO)
+// =========================
 echo json_encode([
     "success"   => true,
     "admin_id" => (int) $admin['id'],
     "usuario"  => $admin['usuario'],
     "tipo"     => $admin['tipo']
 ]);
+
 exit;

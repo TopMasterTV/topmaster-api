@@ -2,13 +2,13 @@
 header("Content-Type: application/json");
 
 /* =========================
-   RECEBE DADOS (POST ou GET)
+   RECEBE DADOS (GET ou POST)
    ========================= */
-$nome     = $_POST['nome']     ?? $_GET['nome']     ?? '';
-$usuario  = $_POST['usuario']  ?? $_GET['usuario']  ?? '';
-$senha    = $_POST['senha']    ?? $_GET['senha']    ?? '';
-$m3u_url  = $_POST['m3u_url']  ?? $_GET['m3u_url']  ?? '';
-$admin_id = $_POST['admin_id'] ?? $_GET['admin_id'] ?? '';
+$nome     = $_REQUEST['nome']     ?? '';
+$usuario  = $_REQUEST['usuario']  ?? '';
+$senha    = $_REQUEST['senha']    ?? '';
+$m3u_url  = $_REQUEST['m3u_url']  ?? '';
+$admin_id = $_REQUEST['admin_id'] ?? '';
 
 if (
     $nome === '' ||
@@ -61,19 +61,20 @@ try {
 }
 
 /* =========================
-   INSERE CLIENTE
+   CRIA CLIENTE
    ========================= */
+$senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+
 try {
-    $sql = "
+    $stmt = $pdo->prepare("
         INSERT INTO clientes (nome, usuario, senha, m3u_url, admin_id)
         VALUES (:nome, :usuario, :senha, :m3u_url, :admin_id)
-    ";
+    ");
 
-    $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ":nome"     => $nome,
         ":usuario"  => $usuario,
-        ":senha"    => $senha,
+        ":senha"    => $senha_hash,
         ":m3u_url"  => $m3u_url,
         ":admin_id" => $admin_id
     ]);
@@ -84,8 +85,16 @@ try {
     ]);
 
 } catch (PDOException $e) {
-    echo json_encode([
-        "success" => false,
-        "message" => "Erro ao criar cliente"
-    ]);
+
+    if (str_contains($e->getMessage(), 'duplicate')) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Usuário já existe"
+        ]);
+    } else {
+        echo json_encode([
+            "success" => false,
+            "message" => "Erro ao criar cliente"
+        ]);
+    }
 }

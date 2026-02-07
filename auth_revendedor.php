@@ -1,77 +1,104 @@
 <?php
-header('Content-Type: application/json');
+header("Content-Type: application/json");
 
-// conexão direta (sem _DIR_)
+/* =========================
+   RECEBE DADOS
+   ========================= */
+$usuario = $_POST['usuario'] ?? '';
+$senha   = $_POST['senha']   ?? '';
+
+if ($usuario === '' || $senha === '') {
+    echo json_encode([
+        "success" => false,
+        "message" => "Usuário e senha são obrigatórios"
+    ]);
+    exit;
+}
+
+/* =========================
+   CONEXÃO COM BANCO (RENDER)
+   ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
 if (!$DATABASE_URL) {
     echo json_encode([
-        'success' => false,
-        'message' => 'DATABASE_URL não definida'
+        "success" => false,
+        "message" => "DATABASE_URL não definida"
     ]);
     exit;
 }
 
 $db = parse_url($DATABASE_URL);
 
-$host = $db['host'];
-$port = $db['port'] ?? 5432;
+$host   = $db['host'];
+$port   = $db['port'] ?? 5432;
 $dbname = ltrim($db['path'], '/');
-$user = $db['user'];
-$pass = $db['pass'];
+$user   = $db['user'];
+$pass   = $db['pass'];
 
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
         $user,
         $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
     );
 } catch (Exception $e) {
     echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao conectar ao banco'
+        "success" => false,
+        "message" => "Erro ao conectar ao banco"
     ]);
     exit;
 }
 
-// aceita GET e POST
-$nome    = $_REQUEST['nome']    ?? '';
-$usuario = $_REQUEST['usuario'] ?? '';
-$senha   = $_REQUEST['senha']   ?? '';
+/* =========================
+   BUSCA REVENDEDOR
+   ========================= */
+$stmt = $pdo->prepare("
+    SELECT id, nome, usuario, senha
+    FROM admins
+    WHERE usuario = :usuario
+      AND tipo = 'revendedor'
+    LIMIT 1
+");
 
-if ($nome === '' || $usuario === '' || $senha === '') {
+$stmt->execute([
+    ':usuario' => $usuario
+]);
+
+$revendedor = $stmt->fetch();
+
+if (!$revendedor) {
     echo json_encode([
-        'success' => false,
-        'message' => 'Todos os campos são obrigatórios'
+        "success" => false,
+        "message" => "Usuário ou senha inválidos"
     ]);
     exit;
 }
 
-$tipo = 'revendedor';
-$senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-
-try {
-    $stmt = $pdo->prepare("
-        INSERT INTO admins (nome, usuario, senha, tipo)
-        VALUES (:nome, :usuario, :senha, :tipo)
-    ");
-
-    $stmt->execute([
-        ':nome'    => $nome,
-        ':usuario' => $usuario,
-        ':senha'   => $senha_hash,
-        ':tipo'    => $tipo
-    ]);
-
+/* =========================
+   VERIFICA SENHA
+   ========================= */
+if (!password_verify($senha, $revendedor['senha'])) {
     echo json_encode([
-        'success' => true,
-        'message' => 'Revendedor criado com sucesso'
+        "success" => false,
+        "message" => "Usuário ou senha inválidos"
     ]);
-} catch (PDOException $e) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao criar revendedor',
-        'erro' => $e->getMessage()
-    ]);
+    exit;
 }
+
+/* =========================
+   LOGIN OK
+   ========================= */
+echo json_encode([
+    "success" => true,
+    "revendedor" => [
+        "id"      => $revendedor['id'],
+        "nome"    => $revendedor['nome'],
+        "usuario" => $revendedor['usuario']
+    ]
+]);
+exit;

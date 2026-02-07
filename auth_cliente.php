@@ -1,31 +1,51 @@
 <?php
 header("Content-Type: application/json");
+ob_clean();
 
-// Conexão com o banco usando DATABASE_URL do Render
-$database_url = getenv("DATABASE_URL");
+/* =========================
+   RECEBE DADOS
+   ========================= */
+$usuario = $_REQUEST['usuario'] ?? '';
+$senha   = $_REQUEST['senha']   ?? '';
 
-if (!$database_url) {
+if ($usuario === '' || $senha === '') {
     echo json_encode([
         "success" => false,
-        "message" => "DATABASE_URL não encontrada"
+        "message" => "Usuário e senha são obrigatórios"
     ]);
     exit;
 }
 
-$db = parse_url($database_url);
+/* =========================
+   CONEXÃO COM BANCO (RENDER)
+   ========================= */
+$DATABASE_URL = getenv("DATABASE_URL");
 
-$host = $db["host"];
-$port = $db["port"];
-$user = $db["user"];
-$pass = $db["pass"];
-$dbname = ltrim($db["path"], "/");
+if (!$DATABASE_URL) {
+    echo json_encode([
+        "success" => false,
+        "message" => "DATABASE_URL não definida"
+    ]);
+    exit;
+}
+
+$db = parse_url($DATABASE_URL);
+
+$host   = $db['host'];
+$port   = $db['port'] ?? 5432; // 🔴 CORREÇÃO AQUI
+$dbname = ltrim($db['path'], '/');
+$user   = $db['user'];
+$pass   = $db['pass'];
 
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
         $user,
         $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
     );
 } catch (Exception $e) {
     echo json_encode([
@@ -35,28 +55,21 @@ try {
     exit;
 }
 
-// Recebe os dados
-$usuario = $_POST["usuario"] ?? "";
-$senha   = $_POST["senha"] ?? "";
+/* =========================
+   BUSCA CLIENTE
+   ========================= */
+$stmt = $pdo->prepare("
+    SELECT id, nome, usuario, senha
+    FROM clientes
+    WHERE usuario = :usuario
+    LIMIT 1
+");
 
-if ($usuario === "" || $senha === "") {
-    echo json_encode([
-        "success" => false,
-        "message" => "Usuário e senha são obrigatórios"
-    ]);
-    exit;
-}
+$stmt->execute([
+    ':usuario' => $usuario
+]);
 
-// Busca o cliente
-$sql = "SELECT id, nome, usuario, senha_hash, plano, status, validade, m3u_url 
-        FROM clientes 
-        WHERE usuario = :usuario 
-        LIMIT 1";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute(["usuario" => $usuario]);
-
-$cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+$cliente = $stmt->fetch();
 
 if (!$cliente) {
     echo json_encode([
@@ -66,8 +79,10 @@ if (!$cliente) {
     exit;
 }
 
-// Verifica senha criptografada
-if (!password_verify($senha, $cliente["senha_hash"])) {
+/* =========================
+   VERIFICA SENHA
+   ========================= */
+if (!password_verify($senha, $cliente['senha'])) {
     echo json_encode([
         "success" => false,
         "message" => "Usuário ou senha inválidos"
@@ -75,25 +90,15 @@ if (!password_verify($senha, $cliente["senha_hash"])) {
     exit;
 }
 
-// Verifica status
-if ($cliente["status"] !== "ativo") {
-    echo json_encode([
-        "success" => false,
-        "message" => "Cliente bloqueado ou inativo"
-    ]);
-    exit;
-}
-
-// Login OK
+/* =========================
+   LOGIN OK
+   ========================= */
 echo json_encode([
     "success" => true,
-    "message" => "Login realizado com sucesso",
     "cliente" => [
-        "id" => $cliente["id"],
-        "nome" => $cliente["nome"],
-        "usuario" => $cliente["usuario"],
-        "plano" => $cliente["plano"],
-        "validade" => $cliente["validade"],
-        "m3u_url" => $cliente["m3u_url"]
+        "id"      => (int) $cliente['id'],
+        "nome"    => $cliente['nome'],
+        "usuario" => $cliente['usuario']
     ]
 ]);
+exit;

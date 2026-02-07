@@ -16,7 +16,7 @@ if ($usuario === '' || $senha === '') {
 }
 
 /* =========================
-   CONEXÃO COM BANCO
+   CONEXÃO COM BANCO (RENDER)
    ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -38,33 +38,37 @@ $pass   = $db['pass'];
 
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
         $user,
         $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
     );
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao conectar ao banco"
+        "message" => "Erro ao conectar ao banco de dados"
     ]);
     exit;
 }
 
 /* =========================
-   BUSCA ADMIN PELO USUÁRIO
+   BUSCA ADMIN
    ========================= */
 $stmt = $pdo->prepare("
-    SELECT id, senha, tipo
+    SELECT id, usuario, senha, tipo
     FROM admins
     WHERE usuario = :usuario
     LIMIT 1
 ");
+
 $stmt->execute([
-    ":usuario" => $usuario
+    ':usuario' => $usuario
 ]);
 
-$admin = $stmt->fetch(PDO::FETCH_ASSOC);
+$admin = $stmt->fetch();
 
 if (!$admin) {
     echo json_encode([
@@ -89,7 +93,10 @@ if (!password_verify($senha, $admin['senha'])) {
    LOGIN OK
    ========================= */
 echo json_encode([
-    "success"  => true,
-    "admin_id" => $admin['id'],
-    "tipo"     => $admin['tipo']
+    "success" => true,
+    "admin" => [
+        "id"      => $admin['id'],
+        "usuario" => $admin['usuario'],
+        "tipo"    => $admin['tipo']
+    ]
 ]);

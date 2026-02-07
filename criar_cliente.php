@@ -25,7 +25,7 @@ if (
 }
 
 /* =========================
-   CONEXÃO COM BANCO
+   CONEXÃO COM BANCO (RENDER)
    ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -47,7 +47,7 @@ $pass   = $db['pass'];
 
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
         $user,
         $pass,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
@@ -61,10 +61,13 @@ try {
 }
 
 /* =========================
-   CRIA CLIENTE
+   HASH DA SENHA (🔑 CRÍTICO)
    ========================= */
 $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
+/* =========================
+   INSERE CLIENTE
+   ========================= */
 try {
     $stmt = $pdo->prepare("
         INSERT INTO clientes (nome, usuario, senha, m3u_url, admin_id)
@@ -85,16 +88,8 @@ try {
     ]);
 
 } catch (PDOException $e) {
-
-    if (str_contains($e->getMessage(), 'duplicate')) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Usuário já existe"
-        ]);
-    } else {
-        echo json_encode([
-            "success" => false,
-            "message" => "Erro ao criar cliente"
-        ]);
-    }
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao criar cliente"
+    ]);
 }

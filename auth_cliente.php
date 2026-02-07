@@ -1,9 +1,8 @@
 <?php
 header("Content-Type: application/json");
-ob_clean();
 
 /* =========================
-   RECEBE DADOS
+   RECEBE DADOS (GET ou POST)
    ========================= */
 $usuario = $_REQUEST['usuario'] ?? '';
 $senha   = $_REQUEST['senha']   ?? '';
@@ -32,7 +31,7 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 $host   = $db['host'];
-$port   = $db['port'] ?? 5432; // 🔴 CORREÇÃO AQUI
+$port   = $db['port'] ?? 5432;
 $dbname = ltrim($db['path'], '/');
 $user   = $db['user'];
 $pass   = $db['pass'];
@@ -44,7 +43,7 @@ try {
         $pass,
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
         ]
     );
 } catch (Exception $e) {
@@ -59,7 +58,7 @@ try {
    BUSCA CLIENTE
    ========================= */
 $stmt = $pdo->prepare("
-    SELECT id, nome, usuario, senha
+    SELECT id, nome, usuario, senha, m3u_url, admin_id
     FROM clientes
     WHERE usuario = :usuario
     LIMIT 1
@@ -96,9 +95,11 @@ if (!password_verify($senha, $cliente['senha'])) {
 echo json_encode([
     "success" => true,
     "cliente" => [
-        "id"      => (int) $cliente['id'],
-        "nome"    => $cliente['nome'],
-        "usuario" => $cliente['usuario']
+        "id"       => (int) $cliente['id'],
+        "nome"     => $cliente['nome'],
+        "usuario"  => $cliente['usuario'],
+        "m3u_url"  => $cliente['m3u_url'],
+        "admin_id" => (int) $cliente['admin_id']
     ]
 ]);
 exit;

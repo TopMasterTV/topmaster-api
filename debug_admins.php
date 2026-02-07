@@ -1,7 +1,7 @@
 <?php
 header('Content-Type: application/json');
 
-require_once _DIR_ . '/db.php';
+require_once '/db.php';
 
 try {
     $stmt = $pdo->query("

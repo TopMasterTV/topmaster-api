@@ -16,7 +16,7 @@ if ($usuario === '' || $senha === '') {
 }
 
 /* =========================
-   CONEXÃO COM BANCO
+   CONEXÃO COM BANCO (RENDER)
    ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -30,14 +30,20 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
+$host = $db['host'];
+$port = $db['port'] ?? 5432; // 🔥 CORREÇÃO CRÍTICA
+$dbname = ltrim($db['path'], '/');
+$user = $db['user'];
+$pass = $db['pass'];
+
 try {
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
-        $db['user'],
-        $db['pass'],
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]
     );
 } catch (Exception $e) {
@@ -58,6 +64,7 @@ $stmt = $pdo->prepare("
       AND tipo = 'revendedor'
     LIMIT 1
 ");
+
 $stmt->execute([':usuario' => $usuario]);
 $revendedor = $stmt->fetch();
 
@@ -72,26 +79,26 @@ if (!$revendedor) {
 /* =========================
    VERIFICA SENHA (COMPATÍVEL)
    ========================= */
-$senha_ok = false;
+$senhaValida = false;
 
-// Caso 1: senha em hash
+// senha com hash
 if (password_verify($senha, $revendedor['senha'])) {
-    $senha_ok = true;
+    $senhaValida = true;
 }
-// Caso 2: senha antiga em texto puro
+// fallback senha antiga
 elseif ($senha === $revendedor['senha']) {
-    $senha_ok = true;
+    $senhaValida = true;
 
-    // Atualiza para hash
-    $nova_hash = password_hash($senha, PASSWORD_DEFAULT);
+    // atualiza para hash
+    $novoHash = password_hash($senha, PASSWORD_DEFAULT);
     $upd = $pdo->prepare("UPDATE admins SET senha = :senha WHERE id = :id");
     $upd->execute([
-        ':senha' => $nova_hash,
+        ':senha' => $novoHash,
         ':id'    => $revendedor['id']
     ]);
 }
 
-if (!$senha_ok) {
+if (!$senhaValida) {
     echo json_encode([
         "success" => false,
         "message" => "Usuário ou senha inválidos"

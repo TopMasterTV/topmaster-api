@@ -2,7 +2,7 @@
 header("Content-Type: application/json");
 
 /* =========================
-   RECEBE DADOS
+   RECEBE DADOS (GET ou POST)
    ========================= */
 $usuario = $_REQUEST['usuario'] ?? '';
 $senha   = $_REQUEST['senha']   ?? '';
@@ -82,7 +82,27 @@ if (!$revendedor) {
 /* =========================
    VERIFICA SENHA
    ========================= */
-if (!password_verify($senha, $revendedor['senha'])) {
+$senhaValida = false;
+
+// 1️⃣ tenta senha com hash (CORRETO)
+if (password_verify($senha, $revendedor['senha'])) {
+    $senhaValida = true;
+}
+
+// 2️⃣ fallback para senha antiga em texto puro
+if (!$senhaValida && $senha === $revendedor['senha']) {
+    $senhaValida = true;
+
+    // 🔒 atualiza para hash automaticamente
+    $novoHash = password_hash($senha, PASSWORD_DEFAULT);
+    $upd = $pdo->prepare("UPDATE admins SET senha = :senha WHERE id = :id");
+    $upd->execute([
+        ':senha' => $novoHash,
+        ':id'    => $revendedor['id']
+    ]);
+}
+
+if (!$senhaValida) {
     echo json_encode([
         "success" => false,
         "message" => "Usuário ou senha inválidos"
@@ -96,7 +116,7 @@ if (!password_verify($senha, $revendedor['senha'])) {
 echo json_encode([
     "success" => true,
     "revendedor" => [
-        "id"      => $revendedor['id'],
+        "id"      => (int) $revendedor['id'],
         "nome"    => $revendedor['nome'],
         "usuario" => $revendedor['usuario']
     ]

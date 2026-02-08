@@ -2,7 +2,7 @@
 header("Content-Type: application/json");
 
 /* =========================
-   RECEBE DADOS (GET ou POST)
+   RECEBE DADOS
    ========================= */
 $usuario = $_REQUEST['usuario'] ?? '';
 $senha   = $_REQUEST['senha']   ?? '';
@@ -16,7 +16,7 @@ if ($usuario === '' || $senha === '') {
 }
 
 /* =========================
-   CONEXÃO COM BANCO (RENDER)
+   CONEXÃO COM BANCO
    ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -30,20 +30,14 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
-$host   = $db['host'];
-$port   = $db['port'] ?? 5432;
-$dbname = ltrim($db['path'], '/');
-$user   = $db['user'];
-$pass   = $db['pass'];
-
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
-        $user,
-        $pass,
+        "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        $db['user'],
+        $db['pass'],
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
         ]
     );
 } catch (Exception $e) {
@@ -64,11 +58,7 @@ $stmt = $pdo->prepare("
       AND tipo = 'revendedor'
     LIMIT 1
 ");
-
-$stmt->execute([
-    ':usuario' => $usuario
-]);
-
+$stmt->execute([':usuario' => $usuario]);
 $revendedor = $stmt->fetch();
 
 if (!$revendedor) {
@@ -80,29 +70,28 @@ if (!$revendedor) {
 }
 
 /* =========================
-   VERIFICA SENHA
+   VERIFICA SENHA (COMPATÍVEL)
    ========================= */
-$senhaValida = false;
+$senha_ok = false;
 
-// 1️⃣ tenta senha com hash (CORRETO)
+// Caso 1: senha em hash
 if (password_verify($senha, $revendedor['senha'])) {
-    $senhaValida = true;
+    $senha_ok = true;
 }
+// Caso 2: senha antiga em texto puro
+elseif ($senha === $revendedor['senha']) {
+    $senha_ok = true;
 
-// 2️⃣ fallback para senha antiga em texto puro
-if (!$senhaValida && $senha === $revendedor['senha']) {
-    $senhaValida = true;
-
-    // 🔒 atualiza para hash automaticamente
-    $novoHash = password_hash($senha, PASSWORD_DEFAULT);
+    // Atualiza para hash
+    $nova_hash = password_hash($senha, PASSWORD_DEFAULT);
     $upd = $pdo->prepare("UPDATE admins SET senha = :senha WHERE id = :id");
     $upd->execute([
-        ':senha' => $novoHash,
+        ':senha' => $nova_hash,
         ':id'    => $revendedor['id']
     ]);
 }
 
-if (!$senhaValida) {
+if (!$senha_ok) {
     echo json_encode([
         "success" => false,
         "message" => "Usuário ou senha inválidos"

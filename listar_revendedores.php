@@ -41,15 +41,10 @@ try {
 }
 
 /* =========================
-   LISTAR REVENDEDORES
+   BUSCA REVENDEDORES
    ========================= */
 $stmt = $pdo->prepare("
-    SELECT 
-        id,
-        nome,
-        usuario,
-        senha,
-        whatsapp
+    SELECT id, nome, usuario
     FROM admins
     WHERE tipo = 'revendedor'
     ORDER BY id ASC

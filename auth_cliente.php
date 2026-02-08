@@ -63,7 +63,6 @@ $stmt = $pdo->prepare("
     WHERE usuario = :usuario
     LIMIT 1
 ");
-
 $stmt->execute([
     ':usuario' => $usuario
 ]);
@@ -79,9 +78,32 @@ if (!$cliente) {
 }
 
 /* =========================
-   VERIFICA SENHA
+   VERIFICA SENHA (HASH OU TEXTO)
    ========================= */
-if (!password_verify($senha, $cliente['senha'])) {
+$senhaBanco = $cliente['senha'];
+$senhaOk = false;
+
+// Caso 1: senha já criptografada
+if (password_verify($senha, $senhaBanco)) {
+    $senhaOk = true;
+}
+
+// Caso 2: senha antiga em texto puro
+if (!$senhaOk && $senha === $senhaBanco) {
+    $senhaOk = true;
+
+    // Atualiza automaticamente para hash
+    $novaHash = password_hash($senha, PASSWORD_DEFAULT);
+    $upd = $pdo->prepare(
+        "UPDATE clientes SET senha = :senha WHERE id = :id"
+    );
+    $upd->execute([
+        ':senha' => $novaHash,
+        ':id'    => $cliente['id']
+    ]);
+}
+
+if (!$senhaOk) {
     echo json_encode([
         "success" => false,
         "message" => "Usuário ou senha inválidos"

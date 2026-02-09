@@ -4,11 +4,13 @@ header("Content-Type: application/json");
 /* =========================
    RECEBE DADOS (GET ou POST)
    ========================= */
-$nome     = $_REQUEST['nome']     ?? '';
-$usuario  = $_REQUEST['usuario']  ?? '';
-$senha    = $_REQUEST['senha']    ?? '';
-$m3u_url  = $_REQUEST['m3u_url']  ?? '';
-$admin_id = $_REQUEST['admin_id'] ?? '';
+$nome            = $_REQUEST['nome'] ?? '';
+$usuario         = $_REQUEST['usuario'] ?? '';
+$senha           = $_REQUEST['senha'] ?? '';
+$m3u_url         = $_REQUEST['m3u_url'] ?? '';
+$admin_id        = $_REQUEST['admin_id'] ?? '';
+$revendedor_id   = $_REQUEST['revendedor_id'] ?? null;
+$revendedor_nome = $_REQUEST['revendedor_nome'] ?? null;
 
 if (
     $nome === '' ||
@@ -19,7 +21,7 @@ if (
 ) {
     echo json_encode([
         "success" => false,
-        "message" => "Todos os campos são obrigatórios"
+        "message" => "Todos os campos obrigatórios devem ser preenchidos"
     ]);
     exit;
 }
@@ -39,17 +41,11 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
-$host   = $db['host'];
-$port   = $db['port'] ?? 5432;
-$dbname = ltrim($db['path'], '/');
-$user   = $db['user'];
-$pass   = $db['pass'];
-
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
-        $user,
-        $pass,
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        $db['user'],
+        $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 } catch (Exception $e) {
@@ -61,7 +57,7 @@ try {
 }
 
 /* =========================
-   HASH DA SENHA (🔑 CRÍTICO)
+   HASH DA SENHA
    ========================= */
 $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
@@ -70,23 +66,39 @@ $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
    ========================= */
 try {
     $stmt = $pdo->prepare("
-        INSERT INTO clientes (nome, usuario, senha, m3u_url, admin_id)
-        VALUES (:nome, :usuario, :senha, :m3u_url, :admin_id)
+        INSERT INTO clientes (
+            nome,
+            usuario,
+            senha,
+            m3u_url,
+            admin_id,
+            revendedor_id,
+            revendedor_nome
+        ) VALUES (
+            :nome,
+            :usuario,
+            :senha,
+            :m3u_url,
+            :admin_id,
+            :revendedor_id,
+            :revendedor_nome
+        )
     ");
 
     $stmt->execute([
-        ":nome"     => $nome,
-        ":usuario"  => $usuario,
-        ":senha"    => $senha_hash,
-        ":m3u_url"  => $m3u_url,
-        ":admin_id" => $admin_id
+        ':nome'            => $nome,
+        ':usuario'         => $usuario,
+        ':senha'           => $senha_hash,
+        ':m3u_url'         => $m3u_url,
+        ':admin_id'        => $admin_id,
+        ':revendedor_id'   => $revendedor_id,
+        ':revendedor_nome' => $revendedor_nome
     ]);
 
     echo json_encode([
         "success" => true,
         "message" => "Cliente criado com sucesso"
     ]);
-
 } catch (PDOException $e) {
     echo json_encode([
         "success" => false,

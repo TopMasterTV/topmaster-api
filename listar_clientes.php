@@ -4,8 +4,9 @@ header("Content-Type: application/json");
 /* =========================
    RECEBE DADOS
    ========================= */
-$admin_id = $_POST['admin_id'] ?? '';
-$tipo     = $_POST['tipo']     ?? '';
+$admin_id      = $_POST['admin_id'] ?? '';
+$tipo          = $_POST['tipo'] ?? '';
+$revendedor_id = $_POST['revendedor_id'] ?? null;
 
 if ($admin_id === '' || $tipo === '') {
     echo json_encode([
@@ -30,17 +31,11 @@ if (!$DATABASE_URL) {
 
 $db = parse_url($DATABASE_URL);
 
-$host   = $db['host'];
-$port   = $db['port'] ?? 5432;
-$dbname = ltrim($db['path'], '/');
-$user   = $db['user'];
-$pass   = $db['pass'];
-
 try {
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
-        $user,
-        $pass,
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        $db['user'],
+        $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 } catch (Exception $e) {
@@ -57,25 +52,55 @@ try {
 try {
 
     if ($tipo === 'master') {
-        // Admin master vê todos
+
+        // 🔥 DESENVOLVEDOR VÊ TUDO
         $sql = "
-            SELECT id, nome, usuario, m3u_url, admin_id, criado_em
+            SELECT
+                id,
+                nome,
+                usuario,
+                senha,
+                m3u_url,
+                admin_id,
+                revendedor_id,
+                revendedor_nome,
+                criado_em
             FROM clientes
             ORDER BY id DESC
         ";
+
         $stmt = $pdo->query($sql);
 
     } else {
-        // Admin funcionário vê só os dele
+
+        // 🔥 REVENDEDOR VÊ SOMENTE OS DELE
+        if ($revendedor_id === null || $revendedor_id === '') {
+            echo json_encode([
+                "success" => false,
+                "message" => "revendedor_id é obrigatório para revendedor"
+            ]);
+            exit;
+        }
+
         $sql = "
-            SELECT id, nome, usuario, m3u_url, admin_id, criado_em
+            SELECT
+                id,
+                nome,
+                usuario,
+                senha,
+                m3u_url,
+                admin_id,
+                revendedor_id,
+                revendedor_nome,
+                criado_em
             FROM clientes
-            WHERE admin_id = :admin_id
+            WHERE revendedor_id = :revendedor_id
             ORDER BY id DESC
         ";
+
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
-            ":admin_id" => $admin_id
+            ':revendedor_id' => $revendedor_id
         ]);
     }
 

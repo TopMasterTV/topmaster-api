@@ -1,73 +1,45 @@
 <?php
 header('Content-Type: application/json');
 
-// conexão direta (sem _DIR_)
 $DATABASE_URL = getenv("DATABASE_URL");
-
 if (!$DATABASE_URL) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'DATABASE_URL não definida'
-    ]);
+    echo json_encode(['success' => false, 'message' => 'DATABASE_URL não definida']);
     exit;
 }
 
 $db = parse_url($DATABASE_URL);
 
-$host = $db['host'];
-$port = $db['port'] ?? 5432;
-$dbname = ltrim($db['path'], '/');
-$user = $db['user'];
-$pass = $db['pass'];
+$pdo = new PDO(
+    "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/'),
+    $db['user'],
+    $db['pass'],
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+);
 
-try {
-    $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname",
-        $user,
-        $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-} catch (Exception $e) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro ao conectar ao banco'
-    ]);
+$nome     = $_REQUEST['nome']     ?? '';
+$usuario  = $_REQUEST['usuario']  ?? '';
+$senha    = $_REQUEST['senha']    ?? '';
+$whatsapp = $_REQUEST['whatsapp'] ?? '';
+
+if ($nome === '' || $usuario === '' || $senha === '' || $whatsapp === '') {
+    echo json_encode(['success' => false, 'message' => 'Todos os campos são obrigatórios']);
     exit;
 }
-
-// aceita GET e POST
-$nome    = $_REQUEST['nome']    ?? '';
-$usuario = $_REQUEST['usuario'] ?? '';
-$senha   = $_REQUEST['senha']   ?? '';
-
-if ($nome === '' || $usuario === '' || $senha === '') {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Todos os campos são obrigatórios'
-    ]);
-    exit;
-}
-
-$tipo = 'revendedor';
-$senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
 try {
     $stmt = $pdo->prepare("
-        INSERT INTO admins (nome, usuario, senha, tipo)
-        VALUES (:nome, :usuario, :senha, :tipo)
+        INSERT INTO admins (nome, usuario, senha, whatsapp, tipo)
+        VALUES (:nome, :usuario, :senha, :whatsapp, 'revendedor')
     ");
 
     $stmt->execute([
-        ':nome'    => $nome,
-        ':usuario' => $usuario,
-        ':senha'   => $senha_hash,
-        ':tipo'    => $tipo
+        ':nome'     => $nome,
+        ':usuario'  => $usuario,
+        ':senha'    => $senha,      // 🔴 TEXTO PURO
+        ':whatsapp' => $whatsapp
     ]);
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'Revendedor criado com sucesso'
-    ]);
+    echo json_encode(['success' => true]);
 } catch (PDOException $e) {
     echo json_encode([
         'success' => false,

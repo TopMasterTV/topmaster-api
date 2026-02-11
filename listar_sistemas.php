@@ -25,14 +25,25 @@ $db = parse_url($DATABASE_URL);
 
 try {
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
+        ";dbname=" . ltrim($db['path'], '/') .
+        ";sslmode=require",
         $db['user'],
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    // 🔥 AQUI ESTÁ A CORREÇÃO DEFINITIVA
     $stmt = $pdo->prepare("
-        SELECT *
+        SELECT
+            id,
+            cliente_id,
+            nome_sistema,
+            usuario,
+            senha,
+            url,
+            TO_CHAR(vencimento, 'DD/MM/YYYY') AS vencimento,
+            m3u_url
         FROM sistemas
         WHERE cliente_id = :cliente_id
         ORDER BY id DESC

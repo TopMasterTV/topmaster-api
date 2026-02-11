@@ -7,16 +7,18 @@ require 'db.php';
 
 try {
 
-    $cliente_id = $_POST['cliente_id'] ?? null;
-    $admin_id   = $_POST['admin_id'] ?? null;
-
-    if (!$cliente_id || !$admin_id) {
+    // 🔎 DEBUG TOTAL DO POST
+    if (!isset($_POST['cliente_id']) || !isset($_POST['admin_id'])) {
         echo json_encode([
             'success' => false,
-            'message' => 'cliente_id ou admin_id ausente'
+            'message' => 'cliente_id ou admin_id não enviados',
+            'post_recebido' => $_POST
         ]);
         exit;
     }
+
+    $cliente_id = $_POST['cliente_id'];
+    $admin_id   = $_POST['admin_id'];
 
     $nome     = $_POST['nome'] ?? '';
     $usuario  = $_POST['usuario'] ?? '';
@@ -24,7 +26,7 @@ try {
     $whatsapp = $_POST['whatsapp'] ?? '';
     $m3u_url  = $_POST['m3u_url'] ?? '';
 
-    // Verifica se pertence ao admin
+    // 🔎 Verifica se cliente pertence ao admin
     $check = $pdo->prepare("
         SELECT id FROM clientes
         WHERE id = :cliente_id
@@ -38,12 +40,14 @@ try {
     if ($check->rowCount() === 0) {
         echo json_encode([
             'success' => false,
-            'message' => 'Cliente não pertence ao admin'
+            'message' => 'Cliente não pertence ao admin',
+            'cliente_id_recebido' => $cliente_id,
+            'admin_id_recebido' => $admin_id
         ]);
         exit;
     }
 
-    // UPDATE PRINCIPAL
+    // 🔄 UPDATE PRINCIPAL
     $sql = "
         UPDATE clientes SET
             nome = :nome,
@@ -62,7 +66,7 @@ try {
         ':cliente_id' => $cliente_id
     ]);
 
-    // Atualiza senha se enviada
+    // 🔐 Atualiza senha se enviada
     if (!empty($senha)) {
         $stmtSenha = $pdo->prepare("
             UPDATE clientes
@@ -77,7 +81,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => 'OK ATUALIZADO'
+        'message' => 'CLIENTE ATUALIZADO COM SUCESSO'
     ]);
 
 } catch (Throwable $e) {

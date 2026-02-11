@@ -2,22 +2,23 @@
 header('Content-Type: application/json');
 require 'db.php'; // conexão com o PostgreSQL
 
-echo json_encode([
-    'success' => false,
-    'message' => 'TESTE_VERSAO_NOVA_EDITAR_CLIENTE'
-]);
-exit;
+/* =========================
+   RECEBE E NORMALIZA IDS
+   ========================= */
 
-$cliente_id = $_POST['cliente_id'] ?? null;
+// Aceita cliente_id ou id (compatibilidade total)
+$cliente_id = $_POST['cliente_id'] ?? $_POST['id'] ?? null;
 $admin_id   = $_POST['admin_id'] ?? null;
 
-$nome     = $_POST['nome'] ?? null;
-$usuario  = $_POST['usuario'] ?? null;
-$senha    = $_POST['senha'] ?? null;
-$whatsapp = $_POST['whatsapp'] ?? null;
-$m3u_url  = $_POST['m3u_url'] ?? null;
+// Normaliza
+$cliente_id = is_numeric($cliente_id) ? (int)$cliente_id : null;
+$admin_id   = is_numeric($admin_id) ? (int)$admin_id : null;
 
-if (!$cliente_id || !$admin_id) {
+/* =========================
+   VALIDAÇÃO OBRIGATÓRIA
+   ========================= */
+
+if ($cliente_id === null || $admin_id === null) {
     echo json_encode([
         'success' => false,
         'message' => 'cliente_id e admin_id são obrigatórios'
@@ -25,9 +26,20 @@ if (!$cliente_id || !$admin_id) {
     exit;
 }
 
-/**
- * 🔒 Verifica se o cliente pertence ao admin
- */
+/* =========================
+   CAMPOS EDITÁVEIS
+   ========================= */
+
+$nome     = $_POST['nome'] ?? '';
+$usuario  = $_POST['usuario'] ?? '';
+$senha    = $_POST['senha'] ?? '';
+$whatsapp = $_POST['whatsapp'] ?? '';
+$m3u_url  = $_POST['m3u_url'] ?? '';
+
+/* =========================
+   VERIFICA PROPRIEDADE
+   ========================= */
+
 $check = $pdo->prepare("
     SELECT id FROM clientes
     WHERE id = :cliente_id
@@ -46,9 +58,10 @@ if ($check->rowCount() === 0) {
     exit;
 }
 
-/**
- * 🔧 Atualiza apenas dados permitidos
- */
+/* =========================
+   ATUALIZA DADOS
+   ========================= */
+
 $sql = "
 UPDATE clientes SET
     nome = :nome,

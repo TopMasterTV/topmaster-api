@@ -1,5 +1,30 @@
 <?php
 header('Content-Type: application/json');
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+set_exception_handler(function ($e) {
+    echo json_encode([
+        'success' => false,
+        'debug_exception' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ]);
+    exit;
+});
+
+set_error_handler(function ($severity, $message, $file, $line) {
+    echo json_encode([
+        'success' => false,
+        'debug_error' => $message,
+        'file' => $file,
+        'line' => $line,
+    ]);
+    exit;
+});
+
+header('Content-Type: application/json');
 ini_set('display_errors', 0);
 error_reporting(0);
 

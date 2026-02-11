@@ -14,7 +14,7 @@ try {
 }
 
 /* =========================
-   RECEBE E NORMALIZA IDS
+   IDS
    ========================= */
 
 $cliente_id = $_POST['cliente_id'] ?? $_POST['id'] ?? null;
@@ -32,30 +32,30 @@ if ($cliente_id === null || $admin_id === null) {
 }
 
 /* =========================
-   CAMPOS EDITÁVEIS
+   CAMPOS
    ========================= */
 
-$nome     = $_POST['nome'] ?? '';
-$usuario  = $_POST['usuario'] ?? '';
-$senha    = $_POST['senha'] ?? '';
-$whatsapp = $_POST['whatsapp'] ?? '';
-$m3u_url  = $_POST['m3u_url'] ?? '';
+$nome     = trim($_POST['nome'] ?? '');
+$usuario  = trim($_POST['usuario'] ?? '');
+$senha    = trim($_POST['senha'] ?? '');
+$whatsapp = trim($_POST['whatsapp'] ?? '');
+$m3u_url  = trim($_POST['m3u_url'] ?? '');
 
 /* =========================
-   VERIFICA PROPRIEDADE
+   SEGURANÇA
    ========================= */
 
-$stmt = $pdo->prepare("
+$check = $pdo->prepare("
     SELECT id FROM clientes
     WHERE id = :cliente_id
       AND admin_id = :admin_id
 ");
-$stmt->execute([
+$check->execute([
     ':cliente_id' => $cliente_id,
     ':admin_id'   => $admin_id
 ]);
 
-if ($stmt->rowCount() === 0) {
+if ($check->rowCount() === 0) {
     echo json_encode([
         'success' => false,
         'message' => 'Cliente não encontrado ou acesso negado'
@@ -64,27 +64,41 @@ if ($stmt->rowCount() === 0) {
 }
 
 /* =========================
-   ATUALIZA DADOS
+   UPDATE (SEM SENHA)
    ========================= */
 
-$update = $pdo->prepare("
-    UPDATE clientes SET
-        nome = :nome,
-        usuario = :usuario,
-        senha = :senha,
-        whatsapp = :whatsapp,
-        m3u_url = :m3u_url
-    WHERE id = :cliente_id
-");
+$sql = "
+UPDATE clientes SET
+    nome = :nome,
+    usuario = :usuario,
+    whatsapp = :whatsapp,
+    m3u_url = :m3u_url
+WHERE id = :cliente_id
+";
 
-$update->execute([
+$stmt = $pdo->prepare($sql);
+$stmt->execute([
     ':nome'       => $nome,
     ':usuario'    => $usuario,
-    ':senha'      => $senha,
     ':whatsapp'   => $whatsapp,
     ':m3u_url'    => $m3u_url,
     ':cliente_id' => $cliente_id
 ]);
+
+/* =========================
+   UPDATE DE SENHA (SE EXISTIR)
+   ========================= */
+
+if ($senha !== '') {
+    $stmtSenha = $pdo->prepare("
+        UPDATE clientes SET senha = :senha
+        WHERE id = :cliente_id
+    ");
+    $stmtSenha->execute([
+        ':senha'      => password_hash($senha, PASSWORD_DEFAULT),
+        ':cliente_id' => $cliente_id
+    ]);
+}
 
 echo json_encode([
     'success' => true,

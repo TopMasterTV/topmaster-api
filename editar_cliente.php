@@ -3,7 +3,15 @@ header('Content-Type: application/json');
 ini_set('display_errors', 0);
 error_reporting(0);
 
-require 'db.php';
+try {
+    require 'db.php';
+} catch (Throwable $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Erro interno de conexão'
+    ]);
+    exit;
+}
 
 /* =========================
    RECEBE E NORMALIZA IDS

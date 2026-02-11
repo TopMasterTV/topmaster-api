@@ -53,7 +53,6 @@ try {
 
     if ($tipo === 'master') {
 
-        // 🔥 DESENVOLVEDOR VÊ TUDO
         $sql = "
             SELECT
                 id,
@@ -61,11 +60,12 @@ try {
                 usuario,
                 senha,
                 m3u_url,
+                whatsapp,
                 admin_id,
                 revendedor_id,
                 revendedor_nome,
                 criado_em
-            FROM clientes
+            FROM public.clientes
             ORDER BY id DESC
         ";
 
@@ -73,7 +73,6 @@ try {
 
     } else {
 
-        // 🔥 REVENDEDOR VÊ SOMENTE OS DELE
         if ($revendedor_id === null || $revendedor_id === '') {
             echo json_encode([
                 "success" => false,
@@ -89,11 +88,12 @@ try {
                 usuario,
                 senha,
                 m3u_url,
+                whatsapp,
                 admin_id,
                 revendedor_id,
                 revendedor_nome,
                 criado_em
-            FROM clientes
+            FROM public.clientes
             WHERE revendedor_id = :revendedor_id
             ORDER BY id DESC
         ";

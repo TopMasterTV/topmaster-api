@@ -4,6 +4,10 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 require 'db.php';
+echo json_encode([
+    'debug_db' => getenv('DATABASE_URL')
+]);
+exit;
 
 try {
 

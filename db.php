@@ -1,11 +1,13 @@
 <?php
-ini_set('display_errors', 0);
-error_reporting(0);
 
 $databaseUrl = getenv('DATABASE_URL');
 
 if (!$databaseUrl) {
-    throw new Exception('DATABASE_URL não definida');
+    echo json_encode([
+        "success" => false,
+        "message" => "DATABASE_URL não definida"
+    ]);
+    exit;
 }
 
 $db = parse_url($databaseUrl);
@@ -17,15 +19,27 @@ $user   = $db['user'] ?? null;
 $pass   = $db['pass'] ?? null;
 
 if (!$host || !$dbname || !$user || !$pass) {
-    throw new Exception('Dados de conexão incompletos');
+    echo json_encode([
+        "success" => false,
+        "message" => "Dados de conexão incompletos"
+    ]);
+    exit;
 }
 
-$pdo = new PDO(
-    "pgsql:host=$host;port=$port;dbname=$dbname",
-    $user,
-    $pass,
-    [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]
-);
+try {
+    $pdo = new PDO(
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        ]
+    );
+} catch (Throwable $e) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao conectar ao banco"
+    ]);
+    exit;
+}

@@ -2,6 +2,12 @@
 header('Content-Type: application/json');
 require 'db.php'; // conexão com o PostgreSQL
 
+echo json_encode([
+    'success' => false,
+    'message' => 'TESTE_VERSAO_NOVA_EDITAR_CLIENTE'
+]);
+exit;
+
 $cliente_id = $_POST['cliente_id'] ?? null;
 $admin_id   = $_POST['admin_id'] ?? null;
 

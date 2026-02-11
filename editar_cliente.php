@@ -1,22 +1,19 @@
 <?php
 header('Content-Type: application/json');
-require 'db.php'; // conexão com o PostgreSQL
+ini_set('display_errors', 0);
+error_reporting(0);
+
+require 'db.php';
 
 /* =========================
    RECEBE E NORMALIZA IDS
    ========================= */
 
-// Aceita cliente_id ou id (compatibilidade total)
 $cliente_id = $_POST['cliente_id'] ?? $_POST['id'] ?? null;
 $admin_id   = $_POST['admin_id'] ?? null;
 
-// Normaliza
 $cliente_id = is_numeric($cliente_id) ? (int)$cliente_id : null;
 $admin_id   = is_numeric($admin_id) ? (int)$admin_id : null;
-
-/* =========================
-   VALIDAÇÃO OBRIGATÓRIA
-   ========================= */
 
 if ($cliente_id === null || $admin_id === null) {
     echo json_encode([
@@ -40,17 +37,17 @@ $m3u_url  = $_POST['m3u_url'] ?? '';
    VERIFICA PROPRIEDADE
    ========================= */
 
-$check = $pdo->prepare("
+$stmt = $pdo->prepare("
     SELECT id FROM clientes
     WHERE id = :cliente_id
       AND admin_id = :admin_id
 ");
-$check->execute([
+$stmt->execute([
     ':cliente_id' => $cliente_id,
     ':admin_id'   => $admin_id
 ]);
 
-if ($check->rowCount() === 0) {
+if ($stmt->rowCount() === 0) {
     echo json_encode([
         'success' => false,
         'message' => 'Cliente não encontrado ou acesso negado'
@@ -62,18 +59,17 @@ if ($check->rowCount() === 0) {
    ATUALIZA DADOS
    ========================= */
 
-$sql = "
-UPDATE clientes SET
-    nome = :nome,
-    usuario = :usuario,
-    senha = :senha,
-    whatsapp = :whatsapp,
-    m3u_url = :m3u_url
-WHERE id = :cliente_id
-";
+$update = $pdo->prepare("
+    UPDATE clientes SET
+        nome = :nome,
+        usuario = :usuario,
+        senha = :senha,
+        whatsapp = :whatsapp,
+        m3u_url = :m3u_url
+    WHERE id = :cliente_id
+");
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute([
+$update->execute([
     ':nome'       => $nome,
     ':usuario'    => $usuario,
     ':senha'      => $senha,
@@ -86,3 +82,4 @@ echo json_encode([
     'success' => true,
     'message' => 'Cliente atualizado com sucesso'
 ]);
+exit;

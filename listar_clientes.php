@@ -58,7 +58,6 @@ try {
                 id,
                 nome,
                 usuario,
-                senha,
                 m3u_url,
                 whatsapp,
                 admin_id,

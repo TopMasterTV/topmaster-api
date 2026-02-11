@@ -1,15 +1,18 @@
 <?php
 header('Content-Type: application/json');
+
+/* =========================
+   DEBUG CONTROLADO (TEMPORÁRIO)
+   ========================= */
 ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 set_exception_handler(function ($e) {
     echo json_encode([
         'success' => false,
-        'debug_exception' => $e->getMessage(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
+        'debug'   => $e->getMessage(),
+        'file'    => $e->getFile(),
+        'line'    => $e->getLine(),
     ]);
     exit;
 });
@@ -17,31 +20,21 @@ set_exception_handler(function ($e) {
 set_error_handler(function ($severity, $message, $file, $line) {
     echo json_encode([
         'success' => false,
-        'debug_error' => $message,
-        'file' => $file,
-        'line' => $line,
+        'debug'   => $message,
+        'file'    => $file,
+        'line'    => $line,
     ]);
     exit;
 });
 
-header('Content-Type: application/json');
-ini_set('display_errors', 0);
-error_reporting(0);
-
-try {
-    require 'db.php';
-} catch (Throwable $e) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Erro interno de conexão'
-    ]);
-    exit;
-}
+/* =========================
+   CONEXÃO
+   ========================= */
+require 'db.php';
 
 /* =========================
    IDS
    ========================= */
-
 $cliente_id = $_POST['cliente_id'] ?? $_POST['id'] ?? null;
 $admin_id   = $_POST['admin_id'] ?? null;
 
@@ -59,7 +52,6 @@ if ($cliente_id === null || $admin_id === null) {
 /* =========================
    CAMPOS
    ========================= */
-
 $nome     = trim($_POST['nome'] ?? '');
 $usuario  = trim($_POST['usuario'] ?? '');
 $senha    = trim($_POST['senha'] ?? '');
@@ -69,7 +61,6 @@ $m3u_url  = trim($_POST['m3u_url'] ?? '');
 /* =========================
    SEGURANÇA
    ========================= */
-
 $check = $pdo->prepare("
     SELECT id FROM clientes
     WHERE id = :cliente_id
@@ -89,9 +80,8 @@ if ($check->rowCount() === 0) {
 }
 
 /* =========================
-   UPDATE (SEM SENHA)
+   UPDATE PRINCIPAL
    ========================= */
-
 $sql = "
 UPDATE clientes SET
     nome = :nome,
@@ -111,9 +101,8 @@ $stmt->execute([
 ]);
 
 /* =========================
-   UPDATE DE SENHA (SE EXISTIR)
+   UPDATE DE SENHA (OPCIONAL)
    ========================= */
-
 if ($senha !== '') {
     $stmtSenha = $pdo->prepare("
         UPDATE clientes SET senha = :senha

@@ -4,25 +4,19 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 require 'db.php';
-echo json_encode([
-    'debug_db' => getenv('DATABASE_URL')
-]);
-exit;
 
 try {
 
-    // 🔎 DEBUG TOTAL DO POST
-    if (!isset($_POST['cliente_id']) || !isset($_POST['admin_id'])) {
+    $cliente_id = $_POST['cliente_id'] ?? null;
+    $admin_id   = $_POST['admin_id'] ?? null;
+
+    if (!$cliente_id || !$admin_id) {
         echo json_encode([
             'success' => false,
-            'message' => 'cliente_id ou admin_id não enviados',
-            'post_recebido' => $_POST
+            'message' => 'cliente_id ou admin_id ausente'
         ]);
         exit;
     }
-
-    $cliente_id = $_POST['cliente_id'];
-    $admin_id   = $_POST['admin_id'];
 
     $nome     = $_POST['nome'] ?? '';
     $usuario  = $_POST['usuario'] ?? '';
@@ -30,9 +24,9 @@ try {
     $whatsapp = $_POST['whatsapp'] ?? '';
     $m3u_url  = $_POST['m3u_url'] ?? '';
 
-    // 🔎 Verifica se cliente pertence ao admin
+    // 🔒 Força schema public
     $check = $pdo->prepare("
-        SELECT id FROM clientes
+        SELECT id FROM public.clientes
         WHERE id = :cliente_id
         AND admin_id = :admin_id
     ");
@@ -44,16 +38,13 @@ try {
     if ($check->rowCount() === 0) {
         echo json_encode([
             'success' => false,
-            'message' => 'Cliente não pertence ao admin',
-            'cliente_id_recebido' => $cliente_id,
-            'admin_id_recebido' => $admin_id
+            'message' => 'Cliente não pertence ao admin'
         ]);
         exit;
     }
 
-    // 🔄 UPDATE PRINCIPAL
     $sql = "
-        UPDATE clientes SET
+        UPDATE public.clientes SET
             nome = :nome,
             usuario = :usuario,
             whatsapp = :whatsapp,
@@ -70,10 +61,9 @@ try {
         ':cliente_id' => $cliente_id
     ]);
 
-    // 🔐 Atualiza senha se enviada
     if (!empty($senha)) {
         $stmtSenha = $pdo->prepare("
-            UPDATE clientes
+            UPDATE public.clientes
             SET senha = :senha
             WHERE id = :cliente_id
         ");
@@ -85,7 +75,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => 'CLIENTE ATUALIZADO COM SUCESSO'
+        'message' => 'CLIENTE ATUALIZADO'
     ]);
 
 } catch (Throwable $e) {
@@ -95,5 +85,4 @@ try {
         'erro_real' => $e->getMessage(),
         'linha' => $e->getLine()
     ]);
-
 }

@@ -58,7 +58,7 @@ try {
    BUSCA CLIENTE
    ========================= */
 $stmt = $pdo->prepare("
-    SELECT id, nome, usuario, senha, m3u_url, admin_id, link_pagamento
+    SELECT id, nome, usuario, senha, m3u_url, admin_id, link_pagamento, plano
     FROM clientes
     WHERE usuario = :usuario
     LIMIT 1
@@ -122,7 +122,8 @@ echo json_encode([
         "usuario"        => $cliente['usuario'],
         "m3u_url"        => $cliente['m3u_url'],
         "admin_id"       => (int) $cliente['admin_id'],
-        "link_pagamento" => $cliente['link_pagamento'] ?? ''
+        "link_pagamento" => $cliente['link_pagamento'] ?? '',
+        "plano"          => $cliente['plano'] ?? ''
     ]
 ]);
 exit;

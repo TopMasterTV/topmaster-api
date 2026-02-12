@@ -10,6 +10,7 @@ $senha           = $_REQUEST['senha'] ?? '';
 $m3u_url         = $_REQUEST['m3u_url'] ?? '';
 $whatsapp        = $_REQUEST['whatsapp'] ?? '';
 $link_pagamento  = $_REQUEST['link_pagamento'] ?? '';
+$plano           = $_REQUEST['plano'] ?? '';
 $admin_id        = $_REQUEST['admin_id'] ?? '';
 $revendedor_id   = $_REQUEST['revendedor_id'] ?? null;
 $revendedor_nome = $_REQUEST['revendedor_nome'] ?? null;
@@ -58,14 +59,8 @@ try {
     exit;
 }
 
-/* =========================
-   HASH DA SENHA
-   ========================= */
 $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
-/* =========================
-   INSERE CLIENTE
-   ========================= */
 try {
     $stmt = $pdo->prepare("
         INSERT INTO clientes (
@@ -75,6 +70,7 @@ try {
             m3u_url,
             whatsapp,
             link_pagamento,
+            plano,
             admin_id,
             revendedor_id,
             revendedor_nome
@@ -85,6 +81,7 @@ try {
             :m3u_url,
             :whatsapp,
             :link_pagamento,
+            :plano,
             :admin_id,
             :revendedor_id,
             :revendedor_nome
@@ -98,6 +95,7 @@ try {
         ':m3u_url'         => $m3u_url,
         ':whatsapp'        => $whatsapp,
         ':link_pagamento'  => $link_pagamento,
+        ':plano'           => $plano,
         ':admin_id'        => $admin_id,
         ':revendedor_id'   => $revendedor_id,
         ':revendedor_nome' => $revendedor_nome

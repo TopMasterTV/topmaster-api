@@ -18,11 +18,12 @@ try {
         exit;
     }
 
-    $nome     = $_POST['nome'] ?? '';
-    $usuario  = $_POST['usuario'] ?? '';
-    $senha    = $_POST['senha'] ?? '';
-    $whatsapp = $_POST['whatsapp'] ?? '';
-    $m3u_url  = $_POST['m3u_url'] ?? '';
+    $nome           = $_POST['nome'] ?? '';
+    $usuario        = $_POST['usuario'] ?? '';
+    $senha          = $_POST['senha'] ?? '';
+    $whatsapp       = $_POST['whatsapp'] ?? '';
+    $m3u_url        = $_POST['m3u_url'] ?? '';
+    $link_pagamento = $_POST['link_pagamento'] ?? '';
 
     // 🔒 Força schema public
     $check = $pdo->prepare("
@@ -48,17 +49,19 @@ try {
             nome = :nome,
             usuario = :usuario,
             whatsapp = :whatsapp,
-            m3u_url = :m3u_url
+            m3u_url = :m3u_url,
+            link_pagamento = :link_pagamento
         WHERE id = :cliente_id
     ";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
-        ':nome'       => $nome,
-        ':usuario'    => $usuario,
-        ':whatsapp'   => $whatsapp,
-        ':m3u_url'    => $m3u_url,
-        ':cliente_id' => $cliente_id
+        ':nome'           => $nome,
+        ':usuario'        => $usuario,
+        ':whatsapp'       => $whatsapp,
+        ':m3u_url'        => $m3u_url,
+        ':link_pagamento' => $link_pagamento,
+        ':cliente_id'     => $cliente_id
     ]);
 
     if (!empty($senha)) {

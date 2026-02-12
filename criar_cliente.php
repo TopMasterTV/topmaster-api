@@ -9,6 +9,7 @@ $usuario         = $_REQUEST['usuario'] ?? '';
 $senha           = $_REQUEST['senha'] ?? '';
 $m3u_url         = $_REQUEST['m3u_url'] ?? '';
 $whatsapp        = $_REQUEST['whatsapp'] ?? '';
+$link_pagamento  = $_REQUEST['link_pagamento'] ?? '';
 $admin_id        = $_REQUEST['admin_id'] ?? '';
 $revendedor_id   = $_REQUEST['revendedor_id'] ?? null;
 $revendedor_nome = $_REQUEST['revendedor_nome'] ?? null;
@@ -73,6 +74,7 @@ try {
             senha,
             m3u_url,
             whatsapp,
+            link_pagamento,
             admin_id,
             revendedor_id,
             revendedor_nome
@@ -82,6 +84,7 @@ try {
             :senha,
             :m3u_url,
             :whatsapp,
+            :link_pagamento,
             :admin_id,
             :revendedor_id,
             :revendedor_nome
@@ -94,6 +97,7 @@ try {
         ':senha'           => $senha_hash,
         ':m3u_url'         => $m3u_url,
         ':whatsapp'        => $whatsapp,
+        ':link_pagamento'  => $link_pagamento,
         ':admin_id'        => $admin_id,
         ':revendedor_id'   => $revendedor_id,
         ':revendedor_nome' => $revendedor_nome

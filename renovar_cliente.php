@@ -1,146 +1,144 @@
 <?php
 header("Content-Type: application/json");
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 
-require 'db.php';
+/* =========================
+   RECEBE DADOS
+   ========================= */
+$cliente_id = $_POST['cliente_id'] ?? '';
 
-try {
-
-    $cliente_id = $_POST['cliente_id'] ?? null;
-    $admin_id   = $_POST['admin_id'] ?? null;
-
-    if (!$cliente_id || !$admin_id) {
-        echo json_encode([
-            "success" => false,
-            "message" => "cliente_id e admin_id são obrigatórios"
-        ]);
-        exit;
-    }
-
-    /* =========================
-       VERIFICA SE CLIENTE PERTENCE AO ADMIN
-    ========================= */
-    $check = $pdo->prepare("
-        SELECT plano 
-        FROM public.clientes
-        WHERE id = :cliente_id
-        AND admin_id = :admin_id
-        LIMIT 1
-    ");
-
-    $check->execute([
-        ':cliente_id' => $cliente_id,
-        ':admin_id'   => $admin_id
-    ]);
-
-    $cliente = $check->fetch(PDO::FETCH_ASSOC);
-
-    if (!$cliente) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Cliente não pertence ao admin"
-        ]);
-        exit;
-    }
-
-    $plano = $cliente['plano'] ?? '';
-
-    if ($plano === '') {
-        echo json_encode([
-            "success" => false,
-            "message" => "Plano do cliente não definido"
-        ]);
-        exit;
-    }
-
-    /* =========================
-       CONVERTE PLANO EM DIAS
-    ========================= */
-    switch ($plano) {
-        case 'mensal':
-            $dias = 30;
-            break;
-        case 'trimestral':
-            $dias = 90;
-            break;
-        case 'semestral':
-            $dias = 180;
-            break;
-        case 'anual':
-            $dias = 365;
-            break;
-        default:
-            echo json_encode([
-                "success" => false,
-                "message" => "Plano inválido"
-            ]);
-            exit;
-    }
-
-    /* =========================
-       BUSCA TODOS OS SISTEMAS DO CLIENTE
-    ========================= */
-    $stmt = $pdo->prepare("
-        SELECT id, vencimento
-        FROM public.sistemas
-        WHERE cliente_id = :cliente_id
-    ");
-
-    $stmt->execute([
-        ':cliente_id' => $cliente_id
-    ]);
-
-    $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if (!$sistemas) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Cliente não possui sistemas"
-        ]);
-        exit;
-    }
-
-    $hoje = new DateTime();
-    $hoje->setTime(0,0,0);
-
-    foreach ($sistemas as $sistema) {
-
-        $vencimentoAtual = new DateTime($sistema['vencimento']);
-        $vencimentoAtual->setTime(0,0,0);
-
-        if ($vencimentoAtual < $hoje) {
-            // Vencido → soma a partir de hoje
-            $novaData = clone $hoje;
-        } else {
-            // Ativo → soma a partir do vencimento atual
-            $novaData = clone $vencimentoAtual;
-        }
-
-        $novaData->modify("+$dias days");
-
-        $update = $pdo->prepare("
-            UPDATE public.sistemas
-            SET vencimento = :nova_data
-            WHERE id = :id
-        ");
-
-        $update->execute([
-            ':nova_data' => $novaData->format('Y-m-d'),
-            ':id'        => $sistema['id']
-        ]);
-    }
-
-    echo json_encode([
-        "success" => true,
-        "message" => "Sistemas renovados com sucesso"
-    ]);
-
-} catch (Throwable $e) {
-
+if ($cliente_id === '') {
     echo json_encode([
         "success" => false,
-        "erro_real" => $e->getMessage(),
-        "linha" => $e->getLine()
+        "message" => "cliente_id é obrigatório"
+    ]);
+    exit;
+}
+
+/* =========================
+   CONEXÃO COM BANCO
+   ========================= */
+$DATABASE_URL = getenv("DATABASE_URL");
+
+if (!$DATABASE_URL) {
+    echo json_encode([
+        "success" => false,
+        "message" => "DATABASE_URL não definida"
+    ]);
+    exit;
+}
+
+$db = parse_url($DATABASE_URL);
+
+try {
+    $pdo = new PDO(
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
+        ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        $db['user'],
+        $db['pass'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+} catch (Exception $e) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao conectar ao banco"
+    ]);
+    exit;
+}
+
+/* =========================
+   BUSCA PLANO DO CLIENTE
+   ========================= */
+$stmt = $pdo->prepare("
+    SELECT plano
+    FROM clientes
+    WHERE id = :cliente_id
+    LIMIT 1
+");
+$stmt->execute([':cliente_id' => $cliente_id]);
+$cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$cliente) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Cliente não encontrado"
+    ]);
+    exit;
+}
+
+$plano = strtolower(trim($cliente['plano'] ?? ''));
+
+switch ($plano) {
+    case 'mensal':
+        $dias = 30;
+        break;
+    case 'trimestral':
+        $dias = 90;
+        break;
+    case 'semestral':
+        $dias = 180;
+        break;
+    case 'anual':
+        $dias = 365;
+        break;
+    default:
+        echo json_encode([
+            "success" => false,
+            "message" => "Plano inválido ou não definido"
+        ]);
+        exit;
+}
+
+/* =========================
+   BUSCA SISTEMAS DO CLIENTE
+   ========================= */
+$stmt = $pdo->prepare("
+    SELECT id, vencimento
+    FROM sistemas
+    WHERE cliente_id = :cliente_id
+");
+$stmt->execute([':cliente_id' => $cliente_id]);
+$sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+if (!$sistemas) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Cliente não possui sistemas"
+    ]);
+    exit;
+}
+
+$hoje = new DateTime();
+$hoje->setTime(0, 0, 0);
+
+foreach ($sistemas as $sistema) {
+
+    $vencimentoAtual = new DateTime($sistema['vencimento']);
+    $vencimentoAtual->setTime(0, 0, 0);
+
+    if ($vencimentoAtual < $hoje) {
+        // Vencido → renova a partir de hoje
+        $novaData = clone $hoje;
+    } else {
+        // Ainda ativo → renova a partir do vencimento atual
+        $novaData = clone $vencimentoAtual;
+    }
+
+    $novaData->modify("+$dias days");
+
+    $update = $pdo->prepare("
+        UPDATE sistemas
+        SET vencimento = :nova_data
+        WHERE id = :sistema_id
+    ");
+
+    $update->execute([
+        ':nova_data' => $novaData->format('Y-m-d'),
+        ':sistema_id' => $sistema['id']
     ]);
 }
+
+echo json_encode([
+    "success" => true,
+    "message" => "Cliente renovado com sucesso"
+]);
+exit;

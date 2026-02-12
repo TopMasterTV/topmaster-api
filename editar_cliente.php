@@ -44,6 +44,8 @@ try {
         exit;
     }
 
+    if ($link_pagamento !== '') {
+
     $sql = "
         UPDATE public.clientes SET
             nome = :nome,
@@ -64,6 +66,26 @@ try {
         ':cliente_id'     => $cliente_id
     ]);
 
+} else {
+
+    $sql = "
+        UPDATE public.clientes SET
+            nome = :nome,
+            usuario = :usuario,
+            whatsapp = :whatsapp,
+            m3u_url = :m3u_url
+        WHERE id = :cliente_id
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':nome'       => $nome,
+        ':usuario'    => $usuario,
+        ':whatsapp'   => $whatsapp,
+        ':m3u_url'    => $m3u_url,
+        ':cliente_id' => $cliente_id
+    ]);
+}
     if (!empty($senha)) {
         $stmtSenha = $pdo->prepare("
             UPDATE public.clientes

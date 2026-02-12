@@ -33,7 +33,6 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    // 🔥 AQUI ESTÁ A CORREÇÃO DEFINITIVA
     $stmt = $pdo->prepare("
         SELECT
             id,
@@ -42,7 +41,7 @@ try {
             usuario,
             senha,
             url,
-            TO_CHAR(vencimento, 'DD/MM/YYYY') AS vencimento,
+            vencimento,
             m3u_url
         FROM sistemas
         WHERE cliente_id = :cliente_id

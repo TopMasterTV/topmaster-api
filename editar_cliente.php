@@ -24,8 +24,8 @@ try {
     $whatsapp       = $_POST['whatsapp'] ?? '';
     $m3u_url        = $_POST['m3u_url'] ?? '';
     $link_pagamento = $_POST['link_pagamento'] ?? '';
+    $plano          = $_POST['plano'] ?? '';
 
-    // 🔒 Força schema public
     $check = $pdo->prepare("
         SELECT id FROM public.clientes
         WHERE id = :cliente_id
@@ -46,46 +46,51 @@ try {
 
     if ($link_pagamento !== '') {
 
-    $sql = "
-        UPDATE public.clientes SET
-            nome = :nome,
-            usuario = :usuario,
-            whatsapp = :whatsapp,
-            m3u_url = :m3u_url,
-            link_pagamento = :link_pagamento
-        WHERE id = :cliente_id
-    ";
+        $sql = "
+            UPDATE public.clientes SET
+                nome = :nome,
+                usuario = :usuario,
+                whatsapp = :whatsapp,
+                m3u_url = :m3u_url,
+                link_pagamento = :link_pagamento,
+                plano = :plano
+            WHERE id = :cliente_id
+        ";
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':nome'           => $nome,
-        ':usuario'        => $usuario,
-        ':whatsapp'       => $whatsapp,
-        ':m3u_url'        => $m3u_url,
-        ':link_pagamento' => $link_pagamento,
-        ':cliente_id'     => $cliente_id
-    ]);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':nome'           => $nome,
+            ':usuario'        => $usuario,
+            ':whatsapp'       => $whatsapp,
+            ':m3u_url'        => $m3u_url,
+            ':link_pagamento' => $link_pagamento,
+            ':plano'          => $plano,
+            ':cliente_id'     => $cliente_id
+        ]);
 
-} else {
+    } else {
 
-    $sql = "
-        UPDATE public.clientes SET
-            nome = :nome,
-            usuario = :usuario,
-            whatsapp = :whatsapp,
-            m3u_url = :m3u_url
-        WHERE id = :cliente_id
-    ";
+        $sql = "
+            UPDATE public.clientes SET
+                nome = :nome,
+                usuario = :usuario,
+                whatsapp = :whatsapp,
+                m3u_url = :m3u_url,
+                plano = :plano
+            WHERE id = :cliente_id
+        ";
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':nome'       => $nome,
-        ':usuario'    => $usuario,
-        ':whatsapp'   => $whatsapp,
-        ':m3u_url'    => $m3u_url,
-        ':cliente_id' => $cliente_id
-    ]);
-}
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':nome'       => $nome,
+            ':usuario'    => $usuario,
+            ':whatsapp'   => $whatsapp,
+            ':m3u_url'    => $m3u_url,
+            ':plano'      => $plano,
+            ':cliente_id' => $cliente_id
+        ]);
+    }
+
     if (!empty($senha)) {
         $stmtSenha = $pdo->prepare("
             UPDATE public.clientes

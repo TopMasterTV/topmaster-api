@@ -1,21 +1,17 @@
 <?php
 header("Content-Type: application/json");
 
-/* ===============================
-   CONEXÃO COM BANCO
-================================= */
+$DATABASE_URL = getenv("DATABASE_URL");
 
-$URL_DO_BANCO_DE_DADOS = getenv("URL_DO_BANCO_DE_DADOS");
-
-if (!$URL_DO_BANCO_DE_DADOS) {
+if (!$DATABASE_URL) {
     echo json_encode([
         "success" => false,
-        "message" => "URL_DO_BANCO_DE_DADOS não definida"
+        "message" => "DATABASE_URL não definida"
     ]);
     exit;
 }
 
-$db = parse_url($URL_DO_BANCO_DE_DADOS);
+$db = parse_url($DATABASE_URL);
 
 try {
     $pdo = new PDO(

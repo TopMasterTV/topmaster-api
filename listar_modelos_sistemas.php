@@ -1,6 +1,6 @@
 <?php
 header("Content-Type: application/json");
-require "conexao.php";
+require __DIR__ . "/conexao.php";
 
 try {
     $stmt = $pdo->query("SELECT id, nome, url_padrao FROM modelos_sistemas ORDER BY nome ASC");

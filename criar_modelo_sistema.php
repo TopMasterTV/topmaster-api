@@ -21,17 +21,28 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $stmt = $pdo->query("SELECT id, nome, url_padrao FROM modelos_sistemas ORDER BY nome ASC");
-    $modelos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // 🔥 AGORA ACEITA POST E GET
+    $nome = $_POST['nome'] ?? $_GET['nome'] ?? '';
+    $url_padrao = $_POST['url_padrao'] ?? $_GET['url_padrao'] ?? '';
+
+    if ($nome == '' || $url_padrao == '') {
+        echo json_encode([
+            "success" => false,
+            "message" => "Nome e URL obrigatórios"
+        ]);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("INSERT INTO modelos_sistemas (nome, url_padrao) VALUES (?, ?)");
+    $stmt->execute([$nome, $url_padrao]);
 
     echo json_encode([
-        "success" => true,
-        "modelos" => $modelos
+        "success" => true
     ]);
 
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao listar modelos"
+        "message" => "Erro ao criar modelo"
     ]);
 }

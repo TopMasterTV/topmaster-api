@@ -35,17 +35,20 @@ try {
 
     $stmt = $pdo->prepare("
         SELECT
-            id,
-            cliente_id,
-            nome_sistema,
-            usuario,
-            senha,
-            url,
-            vencimento,
-            m3u_url
-        FROM sistemas
-        WHERE cliente_id = :cliente_id
-        ORDER BY id DESC
+            s.id,
+            s.cliente_id,
+            s.modelo_id,
+            m.nome AS nome_modelo,
+            m.url_padrao AS url,
+            s.usuario,
+            s.senha,
+            s.vencimento,
+            s.m3u_url
+        FROM sistemas s
+        LEFT JOIN modelos_sistemas m 
+            ON s.modelo_id = m.id
+        WHERE s.cliente_id = :cliente_id
+        ORDER BY s.id DESC
     ");
 
     $stmt->execute([
@@ -62,7 +65,6 @@ try {
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao listar sistemas",
-        "error" => $e->getMessage()
+        "message" => $e->getMessage()
     ]);
 }

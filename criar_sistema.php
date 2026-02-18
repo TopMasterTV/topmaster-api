@@ -2,6 +2,7 @@
 header("Content-Type: application/json");
 
 $cliente_id = $_POST['cliente_id'] ?? '';
+$modelo_id = $_POST['modelo_id'] ?? null; // 🔥 NOVO
 $nome_sistema = $_POST['nome_sistema'] ?? '';
 $usuario = $_POST['usuario'] ?? '';
 $senha = $_POST['senha'] ?? '';
@@ -46,6 +47,7 @@ try {
     $stmt = $pdo->prepare("
         INSERT INTO sistemas (
             cliente_id,
+            modelo_id,
             nome_sistema,
             usuario,
             senha,
@@ -54,6 +56,7 @@ try {
             m3u_url
         ) VALUES (
             :cliente_id,
+            :modelo_id,
             :nome_sistema,
             :usuario,
             :senha,
@@ -65,6 +68,7 @@ try {
 
     $stmt->execute([
         ':cliente_id' => $cliente_id,
+        ':modelo_id' => $modelo_id, // 🔥 NOVO
         ':nome_sistema' => $nome_sistema,
         ':usuario' => $usuario,
         ':senha' => $senha,

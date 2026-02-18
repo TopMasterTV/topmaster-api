@@ -2,7 +2,7 @@
 header("Content-Type: application/json");
 
 $cliente_id = $_POST['cliente_id'] ?? '';
-$modelo_id = $_POST['modelo_id'] ?? null; // 🔥 NOVO
+$modelo_id = $_POST['modelo_id'] ?? null;
 $nome_sistema = $_POST['nome_sistema'] ?? '';
 $usuario = $_POST['usuario'] ?? '';
 $senha = $_POST['senha'] ?? '';
@@ -12,6 +12,7 @@ $m3u_url = $_POST['m3u_url'] ?? '';
 
 if (
     $cliente_id === '' ||
+    $modelo_id === null ||
     $nome_sistema === '' ||
     $usuario === '' ||
     $senha === '' ||
@@ -38,7 +39,9 @@ $db = parse_url($DATABASE_URL);
 
 try {
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
+        ";dbname=" . ltrim($db['path'], '/') .
+        ";sslmode=require",
         $db['user'],
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
@@ -68,7 +71,7 @@ try {
 
     $stmt->execute([
         ':cliente_id' => $cliente_id,
-        ':modelo_id' => $modelo_id, // 🔥 NOVO
+        ':modelo_id' => $modelo_id,
         ':nome_sistema' => $nome_sistema,
         ':usuario' => $usuario,
         ':senha' => $senha,
@@ -85,7 +88,6 @@ try {
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao criar sistema",
-        "error" => $e->getMessage()
+        "message" => $e->getMessage()
     ]);
 }

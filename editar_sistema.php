@@ -2,6 +2,7 @@
 header("Content-Type: application/json");
 
 $id = $_POST['id'] ?? '';
+$modelo_id = $_POST['modelo_id'] ?? null; // 🔥 NOVO
 $nome_sistema = $_POST['nome_sistema'] ?? '';
 $usuario = $_POST['usuario'] ?? '';
 $senha = $_POST['senha'] ?? '';
@@ -48,6 +49,7 @@ try {
 
     $stmt = $pdo->prepare("
         UPDATE sistemas SET
+            modelo_id = :modelo_id, -- 🔥 NOVO
             nome_sistema = :nome_sistema,
             usuario = :usuario,
             senha = :senha,
@@ -59,6 +61,7 @@ try {
 
     $stmt->execute([
         ':id' => $id,
+        ':modelo_id' => $modelo_id, // 🔥 NOVO
         ':nome_sistema' => $nome_sistema,
         ':usuario' => $usuario,
         ':senha' => $senha,

@@ -37,12 +37,12 @@ try {
         SELECT
             s.id,
             s.cliente_id,
-            m.nome AS nome_sistema,
-            m.url_padrao AS url,
-            s.usuario,
-            s.senha,
+            COALESCE(m.nome, '') AS nome_sistema,
+            COALESCE(m.url_padrao, '') AS url,
+            COALESCE(s.usuario, '') AS usuario,
+            COALESCE(s.senha, '') AS senha,
             s.vencimento,
-            s.m3u_url
+            COALESCE(s.m3u_url, '') AS m3u_url
         FROM sistemas s
         LEFT JOIN modelos_sistemas m 
             ON s.modelo_id = m.id

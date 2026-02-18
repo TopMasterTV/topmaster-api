@@ -37,8 +37,7 @@ try {
         SELECT
             s.id,
             s.cliente_id,
-            s.modelo_id,
-            m.nome AS nome_modelo,
+            m.nome AS nome_sistema,
             m.url_padrao AS url,
             s.usuario,
             s.senha,
@@ -65,6 +64,7 @@ try {
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => $e->getMessage()
+        "message" => "Erro ao listar sistemas",
+        "error" => $e->getMessage()
     ]);
 }

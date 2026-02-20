@@ -2,7 +2,8 @@
 header("Content-Type: application/json");
 require_once __DIR__ . "/db.php";
 
-$cliente_id = $_POST['cliente_id'] ?? '';
+$cliente_id = $_GET['cliente_id'] ??
+$_POST['cliente_id'] ?? '';    
 
 if ($cliente_id == '') {
     echo json_encode([

@@ -1,6 +1,6 @@
 <?php
 header("Content-Type: application/json");
-require_once _DIR_ . "/db.php";
+require_once __DIR__ . "/db.php";
 
 $cliente_id = $_GET['cliente_id'] ?? $_POST['cliente_id'] ?? '';
 

@@ -1,11 +1,10 @@
 <?php
 header("Content-Type: application/json");
-require_once __DIR__ . "/db.php";
+require_once _DIR_ . "/db.php";
 
-$cliente_id = $_GET['cliente_id'] ??
-$_POST['cliente_id'] ?? '';    
+$cliente_id = $_GET['cliente_id'] ?? $_POST['cliente_id'] ?? '';
 
-if ($cliente_id == '') {
+if ($cliente_id == "") {
     echo json_encode([
         "success" => false,
         "message" => "cliente_id obrigatório"
@@ -13,20 +12,30 @@ if ($cliente_id == '') {
     exit;
 }
 
-$sql = "SELECT ativo FROM clientes WHERE id = $1";
-$result = pg_query_params($conn, $sql, [$cliente_id]);
+try {
 
-if (!$result || pg_num_rows($result) == 0) {
+    $stmt = $pdo->prepare("SELECT ativo FROM clientes WHERE id = :id");
+    $stmt->bindParam(":id", $cliente_id, PDO::PARAM_INT);
+    $stmt->execute();
+
+    $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$cliente) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Cliente não encontrado"
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        "success" => true,
+        "ativo" => (bool)$cliente["ativo"]
+    ]);
+
+} catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Cliente não encontrado"
+        "message" => "Erro no servidor"
     ]);
-    exit;
 }
-
-$cliente = pg_fetch_assoc($result);
-
-echo json_encode([
-    "success" => true,
-    "ativo" => $cliente['ativo']
-]);

@@ -55,19 +55,26 @@ try {
 
         $sql = "
             SELECT
-                id,
-                nome,
-                usuario,
-                m3u_url,
-                whatsapp,
-                link_pagamento,
-                plano,
-                admin_id,
-                revendedor_id,
-                revendedor_nome,
-                criado_em
-            FROM public.clientes
-            ORDER BY id DESC
+                c.id,
+                c.nome,
+                c.usuario,
+                c.m3u_url,
+                c.whatsapp,
+                c.link_pagamento,
+                c.plano,
+                c.admin_id,
+                c.revendedor_id,
+                c.revendedor_nome,
+                c.criado_em,
+                (
+                    SELECT s.vencimento
+                    FROM public.sistemas s
+                    WHERE s.cliente_id = c.id
+                    ORDER BY s.id ASC
+                    LIMIT 1
+                ) AS vencimento_principal
+            FROM public.clientes c
+            ORDER BY c.id DESC
         ";
 
         $stmt = $pdo->query($sql);
@@ -84,20 +91,27 @@ try {
 
         $sql = "
             SELECT
-                id,
-                nome,
-                usuario,
-                m3u_url,
-                whatsapp,
-                link_pagamento,
-                plano,
-                admin_id,
-                revendedor_id,
-                revendedor_nome,
-                criado_em
-            FROM public.clientes
-            WHERE revendedor_id = :revendedor_id
-            ORDER BY id DESC
+                c.id,
+                c.nome,
+                c.usuario,
+                c.m3u_url,
+                c.whatsapp,
+                c.link_pagamento,
+                c.plano,
+                c.admin_id,
+                c.revendedor_id,
+                c.revendedor_nome,
+                c.criado_em,
+                (
+                    SELECT s.vencimento
+                    FROM public.sistemas s
+                    WHERE s.cliente_id = c.id
+                    ORDER BY s.id ASC
+                    LIMIT 1
+                ) AS vencimento_principal
+            FROM public.clientes c
+            WHERE c.revendedor_id = :revendedor_id
+            ORDER BY c.id DESC
         ";
 
         $stmt = $pdo->prepare($sql);
@@ -109,9 +123,9 @@ try {
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
-        "success" => true,
-        "total"   => count($clientes),
-        "clientes"=> $clientes
+        "success"  => true,
+        "total"    => count($clientes),
+        "clientes" => $clientes
     ]);
 
 } catch (Exception $e) {

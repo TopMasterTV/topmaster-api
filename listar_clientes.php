@@ -66,13 +66,19 @@ try {
                 c.revendedor_id,
                 c.revendedor_nome,
                 c.criado_em,
+
                 (
-                    SELECT s.vencimento
+                    SELECT COUNT(*)
                     FROM public.sistemas s
                     WHERE s.cliente_id = c.id
-                    ORDER BY s.id ASC
-                    LIMIT 1
+                ) AS total_sistemas,
+
+                (
+                    SELECT MAX(s.vencimento)
+                    FROM public.sistemas s
+                    WHERE s.cliente_id = c.id
                 ) AS vencimento_principal
+
             FROM public.clientes c
             ORDER BY c.id DESC
         ";
@@ -102,13 +108,19 @@ try {
                 c.revendedor_id,
                 c.revendedor_nome,
                 c.criado_em,
+
                 (
-                    SELECT s.vencimento
+                    SELECT COUNT(*)
                     FROM public.sistemas s
                     WHERE s.cliente_id = c.id
-                    ORDER BY s.id ASC
-                    LIMIT 1
+                ) AS total_sistemas,
+
+                (
+                    SELECT MAX(s.vencimento)
+                    FROM public.sistemas s
+                    WHERE s.cliente_id = c.id
                 ) AS vencimento_principal
+
             FROM public.clientes c
             WHERE c.revendedor_id = :revendedor_id
             ORDER BY c.id DESC
@@ -123,9 +135,9 @@ try {
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     echo json_encode([
-        "success"  => true,
-        "total"    => count($clientes),
-        "clientes" => $clientes
+        "success" => true,
+        "total"   => count($clientes),
+        "clientes"=> $clientes
     ]);
 
 } catch (Exception $e) {

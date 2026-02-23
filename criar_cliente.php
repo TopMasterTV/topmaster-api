@@ -101,10 +101,15 @@ try {
         ':revendedor_nome' => $revendedor_nome
     ]);
 
+    // 🔥 A ÚNICA ADIÇÃO
+    $cliente_id = $pdo->lastInsertId();
+
     echo json_encode([
         "success" => true,
+        "cliente_id" => $cliente_id,
         "message" => "Cliente criado com sucesso"
     ]);
+
 } catch (PDOException $e) {
     echo json_encode([
         "success" => false,

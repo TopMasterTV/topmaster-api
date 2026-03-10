@@ -1,7 +1,7 @@
 <?php
 header("Content-Type: application/json");
 
-$revendedor_id = $_GET['revendedor_id'] ?? '';
+$revendedor_id = $_POST['revendedor_id'] ?? $_GET['revendedor_id'] ?? '';
 
 if ($revendedor_id == '') {
     echo json_encode([

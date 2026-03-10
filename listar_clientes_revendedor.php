@@ -12,13 +12,39 @@ if ($revendedor_id == '') {
 }
 
 $DATABASE_URL = getenv("DATABASE_URL");
+
+if (!$DATABASE_URL) {
+    echo json_encode([
+        "success" => false,
+        "message" => "DATABASE_URL não encontrada"
+    ]);
+    exit;
+}
+
 $db = parse_url($DATABASE_URL);
 
-$pdo = new PDO(
-    "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'],'/').";sslmode=require",
-    $db['user'],
-    $db['pass']
-);
+$host = $db['host'];
+$dbname = ltrim($db['path'], '/');
+$user = $db['user'];
+$pass = $db['pass'];
+
+try {
+
+    $pdo = new PDO(
+        "pgsql:host=$host;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+
+} catch (Exception $e) {
+
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao conectar ao banco"
+    ]);
+    exit;
+}
 
 $stmt = $pdo->prepare("
     SELECT * FROM clientes

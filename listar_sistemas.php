@@ -56,6 +56,47 @@ try {
 
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // 🔥 NOVO BLOCO (buscar status real)
+    foreach ($sistemas as &$sistema) {
+
+        $url = rtrim($sistema['url'], '/');
+        $usuario = $sistema['usuario'];
+        $senha = $sistema['senha'];
+
+        if (!empty($url) && !empty($usuario) && !empty($senha)) {
+
+            $apiUrl = "$url/player_api.php?username=$usuario&password=$senha";
+
+            try {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+
+                $response = curl_exec($ch);
+                curl_close($ch);
+
+                $data = json_decode($response, true);
+
+                if (isset($data['user_info'])) {
+                    $sistema['status'] = $data['user_info']['status'] ?? 'Unknown';
+                    $sistema['exp_date'] = $data['user_info']['exp_date'] ?? null;
+                } else {
+                    $sistema['status'] = 'Unknown';
+                    $sistema['exp_date'] = null;
+                }
+
+            } catch (Exception $e) {
+                $sistema['status'] = 'Error';
+                $sistema['exp_date'] = null;
+            }
+
+        } else {
+            $sistema['status'] = 'Sem dados';
+            $sistema['exp_date'] = null;
+        }
+    }
+
     echo json_encode([
         "success" => true,
         "sistemas" => $sistemas

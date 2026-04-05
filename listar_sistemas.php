@@ -56,7 +56,7 @@ try {
 
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 🔥 NOVO BLOCO (buscar status real)
+    // 🔥 BUSCAR STATUS REAL
     foreach ($sistemas as &$sistema) {
 
         $url = rtrim($sistema['url'], '/');
@@ -71,9 +71,21 @@ try {
                 $ch = curl_init();
                 curl_setopt($ch, CURLOPT_URL, $apiUrl);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+
+                // 🔥 CORREÇÃO PRINCIPAL
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 15);
 
                 $response = curl_exec($ch);
+
+                // 🔥 VERIFICA ERRO REAL
+                if ($response === false) {
+                    $sistema['status'] = 'Error';
+                    $sistema['exp_date'] = null;
+                    curl_close($ch);
+                    continue;
+                }
+
                 curl_close($ch);
 
                 $data = json_decode($response, true);

@@ -1,9 +1,6 @@
 <?php
 header("Content-Type: application/json");
 
-/* =========================
-   RECEBE DADOS
-   ========================= */
 $admin_id      = $_POST['admin_id'] ?? '';
 $tipo          = $_POST['tipo'] ?? '';
 $revendedor_id = $_POST['revendedor_id'] ?? null;
@@ -16,9 +13,6 @@ if ($admin_id === '' || $tipo === '') {
     exit;
 }
 
-/* =========================
-   CONEXÃO COM BANCO
-   ========================= */
 $DATABASE_URL = getenv("DATABASE_URL");
 
 if (!$DATABASE_URL) {
@@ -33,7 +27,9 @@ $db = parse_url($DATABASE_URL);
 
 try {
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) . ";dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
+        ";dbname=" . ltrim($db['path'], '/') .
+        ";sslmode=require",
         $db['user'],
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
@@ -45,6 +41,96 @@ try {
     ]);
     exit;
 }
+
+/* =========================
+   🔥 ATUALIZA SISTEMAS AUTOMATICAMENTE
+   ========================= */
+function atualizarSistemas($pdo) {
+
+    $stmt = $pdo->query("SELECT * FROM sistemas");
+    $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($sistemas as $s) {
+
+        $url = rtrim($s['url'], '/');
+        $user = $s['usuario'];
+        $pass = $s['senha'];
+
+        if (!$url || !$user || !$pass) continue;
+
+        $status = null;
+        $exp_date = null;
+
+        // 🔥 TENTA PLAYER API
+        try {
+            $apiUrl = "$url/player_api.php?username=$user&password=$pass";
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+
+            $response = curl_exec($ch);
+            curl_close($ch);
+
+            $data = json_decode($response, true);
+
+            if (isset($data['user_info'])) {
+                $status = $data['user_info']['status'] ?? null;
+                $exp_date = $data['user_info']['exp_date'] ?? null;
+            }
+
+        } catch (Exception $e) {}
+
+        // 🔥 FALLBACK M3U
+        if (!$status) {
+            try {
+                $m3u = $s['m3u_url'];
+
+                if ($m3u) {
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $m3u);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+
+                    $response = curl_exec($ch);
+                    curl_close($ch);
+
+                    if (strpos($response, "#EXTM3U") !== false) {
+                        $status = 'Active';
+                    }
+                }
+            } catch (Exception $e) {}
+        }
+
+        // 🔥 CONVERTE DATA
+        $vencimento = null;
+
+        if ($exp_date) {
+            $vencimento = date('Y-m-d', $exp_date);
+        }
+
+        // 🔥 ATUALIZA NO BANCO
+        $update = $pdo->prepare("
+            UPDATE sistemas
+            SET
+                status = :status,
+                exp_date = :exp_date,
+                vencimento = COALESCE(:vencimento, vencimento)
+            WHERE id = :id
+        ");
+
+        $update->execute([
+            ':status' => $status,
+            ':exp_date' => $exp_date,
+            ':vencimento' => $vencimento,
+            ':id' => $s['id']
+        ]);
+    }
+}
+
+// 🔥 EXECUTA ATUALIZAÇÃO AUTOMÁTICA
+atualizarSistemas($pdo);
 
 /* =========================
    LISTAGEM DE CLIENTES
@@ -90,7 +176,7 @@ try {
         if ($revendedor_id === null || $revendedor_id === '') {
             echo json_encode([
                 "success" => false,
-                "message" => "revendedor_id é obrigatório para revendedor"
+                "message" => "revendedor_id é obrigatório"
             ]);
             exit;
         }

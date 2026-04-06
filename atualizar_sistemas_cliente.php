@@ -19,7 +19,7 @@ if (!$cliente_id) {
 }
 
 // =========================
-// CONEXÃO BANCO (SEGURA)
+// CONEXÃO BANCO
 // =========================
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -55,6 +55,11 @@ try {
 }
 
 // =========================
+// LIMPA DEBUG ANTIGO
+// =========================
+file_put_contents("debug_api.txt", "");
+
+// =========================
 // BUSCAR SISTEMAS
 // =========================
 $stmt = $pdo->prepare("SELECT * FROM sistemas WHERE cliente_id = :cliente_id");
@@ -73,88 +78,4 @@ foreach ($sistemas as $s) {
 
     if (!$url || !$user || !$pass) continue;
 
-    $status = null;
-    $exp_date = null;
-
-    // 🔥 PLAYER API (principal)
-    try {
-        $apiUrl = "$url/player_api.php?username=$user&password=$pass";
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $apiUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 8,
-        ]);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        if ($response) {
-            $data = json_decode($response, true);
-
-            if (isset($data['user_info'])) {
-                $status = $data['user_info']['status'] ?? null;
-                $exp_date = $data['user_info']['exp_date'] ?? null;
-            }
-        }
-
-    } catch (Exception $e) {}
-
-    // 🔥 FALLBACK M3U (Power / Live)
-    if (!$status) {
-        try {
-            $m3u = $s['m3u_url'] ?? '';
-
-            if ($m3u) {
-                $ch = curl_init();
-                curl_setopt_array($ch, [
-                    CURLOPT_URL => $m3u,
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT => 5,
-                ]);
-
-                $response = curl_exec($ch);
-                curl_close($ch);
-
-                if ($response && strpos($response, "#EXTM3U") !== false) {
-                    $status = 'Active';
-                }
-            }
-        } catch (Exception $e) {}
-    }
-
-    // 🔥 CONVERTER DATA
-    $vencimento = null;
-
-    if ($exp_date && is_numeric($exp_date)) {
-        $vencimento = date('Y-m-d', (int)$exp_date);
-    }
-
-    // 🔥 ATUALIZAR
-    try {
-        $update = $pdo->prepare("
-            UPDATE sistemas
-            SET
-                status = :status,
-                exp_date = :exp_date,
-                vencimento = COALESCE(:vencimento, vencimento)
-            WHERE id = :id
-        ");
-
-        $update->execute([
-            ':status' => $status,
-            ':exp_date' => $exp_date,
-            ':vencimento' => $vencimento,
-            ':id' => $s['id']
-        ]);
-    } catch (Exception $e) {}
-}
-
-// =========================
-// RESPOSTA FINAL
-// =========================
-echo json_encode([
-    "success" => true,
-    "message" => "Sistemas atualizados com sucesso"
-]);
+    $status = null

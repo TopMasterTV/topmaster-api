@@ -1,56 +1,55 @@
 <?php
 header("Content-Type: application/json");
 
-// NÃO exibir HTML quebrando JSON
-ini_set('display_errors', 0);
-error_reporting(0);
+$cliente_id = $_POST['cliente_id'] ?? '';
+
+if (!$cliente_id) {
+    echo json_encode([
+        "success" => false,
+        "message" => "cliente_id obrigatório"
+    ]);
+    exit;
+}
+
+$DATABASE_URL = getenv("DATABASE_URL");
+$db = parse_url($DATABASE_URL);
 
 try {
-
-    $cliente_id = $_POST['cliente_id'] ?? '';
-
-    if (!$cliente_id) {
-        echo json_encode([
-            "success" => false,
-            "message" => "cliente_id obrigatório"
-        ]);
-        exit;
-    }
-
-    $DATABASE_URL = getenv("DATABASE_URL");
-    $db = parse_url($DATABASE_URL);
-
-    $host = $db['host'] ?? '';
-    $port = $db['port'] ?? '5432';
-    $user = $db['user'] ?? '';
-    $pass = $db['pass'] ?? '';
-    $dbname = ltrim($db['path'] ?? '', '/');
-
     $pdo = new PDO(
-        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
-        $user,
-        $pass,
+        "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
+        $db['user'],
+        $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
+} catch (Exception $e) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao conectar ao banco"
+    ]);
+    exit;
+}
 
-    $stmt = $pdo->prepare("SELECT * FROM sistemas WHERE cliente_id = :cliente_id");
-    $stmt->execute([':cliente_id' => $cliente_id]);
-    $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 🔥 BUSCA SISTEMAS
+$stmt = $pdo->prepare("SELECT * FROM sistemas WHERE cliente_id = :cliente_id");
+$stmt->execute([':cliente_id' => $cliente_id]);
 
-    foreach ($sistemas as $s) {
+$sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $url = rtrim($s['url'] ?? '', '/');
-        $usuario = $s['usuario'] ?? '';
-        $senha = $s['senha'] ?? '';
+foreach ($sistemas as $s) {
 
-        if (!$url || !$usuario || !$senha) continue;
+    $url = rtrim($s['url'], '/');
+    $user = $s['usuario'];
+    $pass = $s['senha'];
 
-        $status = null;
-        $exp_date = null;
-        $vencimento = null;
+    if (!$url || !$user || !$pass) continue;
 
-        // 🔥 1 - PLAYER API
-        $apiUrl = "$url/player_api.php?username=$usuario&password=$senha";
+    $status = null;
+    $exp_date = null;
+    $vencimento = null;
+
+    // 🔥 PLAYER API
+    try {
+        $apiUrl = "$url/player_api.php?username=$user&password=$pass";
 
         $response = @file_get_contents($apiUrl);
 
@@ -60,59 +59,51 @@ try {
             if (isset($data['user_info'])) {
                 $status = $data['user_info']['status'] ?? null;
                 $exp_date = $data['user_info']['exp_date'] ?? null;
-            }
-        }
 
-        // 🔥 2 - DATA REAL
-        if ($exp_date && is_numeric($exp_date)) {
-            $vencimento = date('Y-m-d', intval($exp_date));
-        }
-
-        // 🔥 3 - SE ESTÁ ATIVO SEM DATA
-        if (!$vencimento && $status === 'Active') {
-            $vencimento = date('Y-m-d', strtotime('+30 days'));
-        }
-
-        // 🔥 4 - FALLBACK M3U
-        if (!$status) {
-
-            $m3uUrl = "$url/get.php?username=$usuario&password=$senha&type=m3u_plus";
-
-            $response = @file_get_contents($m3uUrl);
-
-            if ($response && strlen($response) > 50) {
-                $status = 'Active';
-
-                if (!$vencimento) {
-                    $vencimento = date('Y-m-d', strtotime('+30 days'));
+                if ($exp_date) {
+                    $vencimento = date('Y-m-d', $exp_date);
                 }
             }
         }
+    } catch (Exception $e) {}
 
-        // 🔥 5 - SALVA
-        if ($vencimento) {
-            $update = $pdo->prepare("
-                UPDATE sistemas
-                SET vencimento = :vencimento
-                WHERE id = :id
-            ");
+    // 🔥 FALLBACK M3U
+    if (!$status) {
+        try {
+            if (!empty($s['m3u_url'])) {
+                $m3u = @file_get_contents($s['m3u_url']);
 
-            $update->execute([
-                ':vencimento' => $vencimento,
-                ':id' => $s['id']
-            ]);
-        }
+                if ($m3u && strpos($m3u, "#EXTM3U") !== false) {
+                    $status = 'Active';
+                }
+            }
+        } catch (Exception $e) {}
     }
 
-    echo json_encode([
-        "success" => true,
-        "message" => "Atualizado com sucesso"
-    ]);
+    // 🔥 SE NÃO TEM DATA NOVA → MANTÉM ANTIGA
+    if (!$vencimento && !empty($s['vencimento'])) {
+        $vencimento = $s['vencimento'];
+    }
 
-} catch (Throwable $e) {
+    // 🔥 UPDATE SEM TRAVAS
+    $update = $pdo->prepare("
+        UPDATE sistemas
+        SET
+            status = :status,
+            exp_date = :exp_date,
+            vencimento = :vencimento
+        WHERE id = :id
+    ");
 
-    echo json_encode([
-        "success" => false,
-        "message" => $e->getMessage()
+    $update->execute([
+        ':status' => $status,
+        ':exp_date' => $exp_date,
+        ':vencimento' => $vencimento,
+        ':id' => $s['id']
     ]);
 }
+
+echo json_encode([
+    "success" => true,
+    "message" => "Sistemas atualizados e salvos corretamente"
+]);

@@ -1,7 +1,7 @@
 <?php
 header("Content-Type: application/json");
 
-// 🔥 BLOQUEIA ERROS NA TELA
+// 🔥 NÃO MOSTRAR ERROS HTML
 ini_set('display_errors', 0);
 error_reporting(0);
 
@@ -40,35 +40,38 @@ try {
     foreach ($sistemas as $s) {
 
         $url = rtrim($s['url'], '/');
-        $user = $s['usuario'];
-        $pass = $s['senha'];
+        $usuario = $s['usuario'];
+        $senha = $s['senha'];
 
-        if (!$url || !$user || !$pass) continue;
+        if (!$url || !$usuario || !$senha) continue;
 
         $vencimento = null;
 
-        // 🔥 PLAYER API
-        $apiUrl = "$url/player_api.php?username=$user&password=$pass";
+        // 🔥 1 - TENTA PLAYER API
+        $apiUrl = "$url/player_api.php?username=$usuario&password=$senha";
         $response = @file_get_contents($apiUrl);
 
         if ($response) {
             $data = json_decode($response, true);
 
-            if (isset($data['user_info']['exp_date'])) {
+            if (isset($data['user_info']['exp_date']) && is_numeric($data['user_info']['exp_date'])) {
                 $vencimento = date('Y-m-d', intval($data['user_info']['exp_date']));
             }
         }
 
-        // 🔥 FALLBACK M3U
+        // 🔥 2 - FALLBACK UNIVERSAL (FUNCIONA PRA GP, POWER, ETC)
         if (!$vencimento) {
-            $m3uUrl = "$url/get.php?username=$user&password=$pass&type=m3u_plus";
 
+            $m3uUrl = "$url/get.php?username=$usuario&password=$senha&type=m3u_plus";
             $response = @file_get_contents($m3uUrl);
 
-            if ($response && strpos($response, "#EXTM3U") !== false) {
-    $vencimento = date('Y-m-d', strtotime('+30 days'));
-}
+            if ($response && strlen($response) > 50) {
+                // QUALQUER RESPOSTA = SISTEMA ATIVO
+                $vencimento = date('Y-m-d', strtotime('+30 days'));
+            }
+        }
 
+        // 🔥 3 - ATUALIZA NO BANCO
         if ($vencimento) {
             $update = $pdo->prepare("
                 UPDATE sistemas

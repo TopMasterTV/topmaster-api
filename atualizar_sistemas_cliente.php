@@ -61,19 +61,19 @@ try {
             $vencimento = date('Y-m-d', intval($exp_date));
         }
 
-        $update = $pdo->prepare("
-            UPDATE sistemas
-            SET
-                exp_date = :exp_date,
-                vencimento = COALESCE(:vencimento, vencimento)
-            WHERE id = :id
-        ");
+        // 🔥 ATUALIZA SOMENTE O QUE EXISTE
+        if ($vencimento) {
+            $update = $pdo->prepare("
+                UPDATE sistemas
+                SET vencimento = :vencimento
+                WHERE id = :id
+            ");
 
-        $update->execute([
-            ':exp_date' => $exp_date,
-            ':vencimento' => $vencimento,
-            ':id' => $s['id']
-        ]);
+            $update->execute([
+                ':vencimento' => $vencimento,
+                ':id' => $s['id']
+            ]);
+        }
     }
 
     echo json_encode([

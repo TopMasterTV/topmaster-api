@@ -1,10 +1,6 @@
 <?php
 header("Content-Type: application/json");
 
-// 🔥 MOSTRAR ERRO NO JSON (IMPORTANTE)
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
-
 try {
 
     $cliente_id = $_POST['cliente_id'] ?? '';
@@ -18,15 +14,6 @@ try {
     }
 
     $DATABASE_URL = getenv("DATABASE_URL");
-
-    if (!$DATABASE_URL) {
-        echo json_encode([
-            "success" => false,
-            "message" => "DATABASE_URL não encontrada"
-        ]);
-        exit;
-    }
-
     $db = parse_url($DATABASE_URL);
 
     $host = $db['host'] ?? '';
@@ -55,7 +42,6 @@ try {
         if (!$url || !$user || !$pass) continue;
 
         $exp_date = null;
-        $status = null;
 
         $apiUrl = "$url/player_api.php?username=$user&password=$pass";
 
@@ -65,7 +51,6 @@ try {
             $data = json_decode($response, true);
 
             if (isset($data['user_info'])) {
-                $status = $data['user_info']['status'] ?? null;
                 $exp_date = $data['user_info']['exp_date'] ?? null;
             }
         }
@@ -79,14 +64,12 @@ try {
         $update = $pdo->prepare("
             UPDATE sistemas
             SET
-                status = :status,
                 exp_date = :exp_date,
                 vencimento = COALESCE(:vencimento, vencimento)
             WHERE id = :id
         ");
 
         $update->execute([
-            ':status' => $status,
             ':exp_date' => $exp_date,
             ':vencimento' => $vencimento,
             ':id' => $s['id']

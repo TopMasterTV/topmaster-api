@@ -1,6 +1,7 @@
 <?php
 header("Content-Type: application/json");
 
+// NÃO exibir HTML quebrando JSON
 ini_set('display_errors', 0);
 error_reporting(0);
 
@@ -19,10 +20,16 @@ try {
     $DATABASE_URL = getenv("DATABASE_URL");
     $db = parse_url($DATABASE_URL);
 
+    $host = $db['host'] ?? '';
+    $port = $db['port'] ?? '5432';
+    $user = $db['user'] ?? '';
+    $pass = $db['pass'] ?? '';
+    $dbname = ltrim($db['path'] ?? '', '/');
+
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
-        $db['user'],
-        $db['pass'],
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
@@ -32,9 +39,9 @@ try {
 
     foreach ($sistemas as $s) {
 
-        $url = rtrim($s['url'], '/');
-        $usuario = $s['usuario'];
-        $senha = $s['senha'];
+        $url = rtrim($s['url'] ?? '', '/');
+        $usuario = $s['usuario'] ?? '';
+        $senha = $s['senha'] ?? '';
 
         if (!$url || !$usuario || !$senha) continue;
 
@@ -42,8 +49,9 @@ try {
         $exp_date = null;
         $vencimento = null;
 
-        // 🔥 PLAYER API (IGUAL APP)
+        // 🔥 1 - PLAYER API
         $apiUrl = "$url/player_api.php?username=$usuario&password=$senha";
+
         $response = @file_get_contents($apiUrl);
 
         if ($response) {
@@ -55,20 +63,21 @@ try {
             }
         }
 
-        // 🔥 SE TEM DATA REAL → USA
+        // 🔥 2 - DATA REAL
         if ($exp_date && is_numeric($exp_date)) {
             $vencimento = date('Y-m-d', intval($exp_date));
         }
 
-        // 🔥 SE NÃO TEM DATA MAS ESTÁ ATIVO → GERA DATA
+        // 🔥 3 - SE ESTÁ ATIVO SEM DATA
         if (!$vencimento && $status === 'Active') {
             $vencimento = date('Y-m-d', strtotime('+30 days'));
         }
 
-        // 🔥 FALLBACK M3U (IGUAL APP)
+        // 🔥 4 - FALLBACK M3U
         if (!$status) {
 
             $m3uUrl = "$url/get.php?username=$usuario&password=$senha&type=m3u_plus";
+
             $response = @file_get_contents($m3uUrl);
 
             if ($response && strlen($response) > 50) {
@@ -80,7 +89,7 @@ try {
             }
         }
 
-        // 🔥 SALVA
+        // 🔥 5 - SALVA
         if ($vencimento) {
             $update = $pdo->prepare("
                 UPDATE sistemas
@@ -104,6 +113,6 @@ try {
 
     echo json_encode([
         "success" => false,
-        "message" => "Erro interno"
+        "message" => $e->getMessage()
     ]);
 }

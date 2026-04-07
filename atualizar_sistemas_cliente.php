@@ -65,8 +65,7 @@ try {
 
             $response = @file_get_contents($m3uUrl);
 
-            if ($response && strlen($response) > 50) {
-    // QUALQUER RESPOSTA = sistema ativo
+            if ($response && strpos($response, "#EXTM3U") !== false) {
     $vencimento = date('Y-m-d', strtotime('+30 days'));
 }
 

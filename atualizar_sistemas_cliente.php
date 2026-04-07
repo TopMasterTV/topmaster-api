@@ -1,6 +1,9 @@
 <?php
 header("Content-Type: application/json");
 
+// 🔥 REMOVE WARNINGS (MUITO IMPORTANTE)
+error_reporting(0);
+
 $cliente_id = $_POST['cliente_id'] ?? '';
 
 if (!$cliente_id) {
@@ -14,11 +17,17 @@ if (!$cliente_id) {
 $DATABASE_URL = getenv("DATABASE_URL");
 $db = parse_url($DATABASE_URL);
 
+$host = $db['host'] ?? '';
+$port = $db['port'] ?? '5432'; // 🔥 CORREÇÃO AQUI
+$user = $db['user'] ?? '';
+$pass = $db['pass'] ?? '';
+$dbname = ltrim($db['path'] ?? '', '/');
+
 try {
     $pdo = new PDO(
-        "pgsql:host={$db['host']};port={$db['port']};dbname=" . ltrim($db['path'], '/') . ";sslmode=require",
-        $db['user'],
-        $db['pass'],
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 } catch (Exception $e) {
@@ -29,6 +38,7 @@ try {
     exit;
 }
 
+// 🔥 BUSCA SISTEMAS
 $stmt = $pdo->prepare("SELECT * FROM sistemas WHERE cliente_id = :cliente_id");
 $stmt->execute([':cliente_id' => $cliente_id]);
 $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -44,7 +54,7 @@ foreach ($sistemas as $s) {
     $exp_date = null;
     $status = null;
 
-    // 🔥 PLAYER API (principal)
+    // 🔥 PLAYER API
     $apiUrl = "$url/player_api.php?username=$user&password=$pass";
 
     $response = @file_get_contents($apiUrl);
@@ -65,7 +75,7 @@ foreach ($sistemas as $s) {
         $vencimento = date('Y-m-d', intval($exp_date));
     }
 
-    // 🔥 ATUALIZA BANCO
+    // 🔥 ATUALIZA
     $update = $pdo->prepare("
         UPDATE sistemas
         SET
@@ -84,5 +94,6 @@ foreach ($sistemas as $s) {
 }
 
 echo json_encode([
-    "success" => true
+    "success" => true,
+    "message" => "Atualizado com sucesso"
 ]);

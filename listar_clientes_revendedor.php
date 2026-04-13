@@ -29,16 +29,13 @@ $user = $db['user'];
 $pass = $db['pass'];
 
 try {
-
     $pdo = new PDO(
         "pgsql:host=$host;dbname=$dbname;sslmode=require",
         $user,
         $pass,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
-
 } catch (Exception $e) {
-
     echo json_encode([
         "success" => false,
         "message" => "Erro ao conectar ao banco"
@@ -46,6 +43,7 @@ try {
     exit;
 }
 
+// 🔥 BUSCA CLIENTES DO REVENDEDOR
 $stmt = $pdo->prepare("
     SELECT * FROM clientes
     WHERE revendedor_id = :revendedor_id
@@ -57,6 +55,43 @@ $stmt->execute([
 ]);
 
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// 🔥 PARA CADA CLIENTE → CALCULAR SISTEMAS E VENCIMENTO
+foreach ($clientes as &$cliente) {
+
+    $stmtSis = $pdo->prepare("
+        SELECT vencimento FROM sistemas
+        WHERE cliente_id = :cliente_id
+    ");
+
+    $stmtSis->execute([
+        ':cliente_id' => $cliente['id']
+    ]);
+
+    $sistemas = $stmtSis->fetchAll(PDO::FETCH_ASSOC);
+
+    $cliente['total_sistemas'] = count($sistemas);
+
+    $maiorVencimento = null;
+
+    foreach ($sistemas as $s) {
+
+        if (!empty($s['vencimento'])) {
+
+            $data = strtotime($s['vencimento']);
+
+            if ($maiorVencimento === null || $data > $maiorVencimento) {
+                $maiorVencimento = $data;
+            }
+        }
+    }
+
+    if ($maiorVencimento) {
+        $cliente['vencimento_principal'] = date('Y-m-d', $maiorVencimento);
+    } else {
+        $cliente['vencimento_principal'] = null;
+    }
+}
 
 echo json_encode([
     "success" => true,

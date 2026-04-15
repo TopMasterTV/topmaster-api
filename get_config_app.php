@@ -23,18 +23,22 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    // 🔥 BUSCA DIRETO O QR
     $stmt = $pdo->prepare("
-        SELECT chave, valor
+        SELECT qr_link
         FROM configuracoes_app
+        WHERE id = 1
+        LIMIT 1
     ");
 
     $stmt->execute();
-
-    $dados = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode([
         "success" => true,
-        "configuracoes" => $dados
+        "configuracoes" => [
+            "qr_link" => $config['qr_link'] ?? ''
+        ]
     ]);
 
 } catch (Exception $e) {
@@ -44,3 +48,4 @@ try {
         "error" => $e->getMessage()
     ]);
 }
+?>

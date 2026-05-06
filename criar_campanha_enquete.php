@@ -5,6 +5,11 @@ $titulo = $_REQUEST['titulo'] ?? '';
 $descricao = $_REQUEST['descricao'] ?? '';
 $encerra_em = $_REQUEST['encerra_em'] ?? '';
 
+$resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
+$resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
+$resultado_link = $_REQUEST['resultado_link'] ?? '';
+$resultado_publicado = $_REQUEST['resultado_publicado'] ?? '0';
+
 if ($titulo === '' || $encerra_em === '') {
     echo json_encode([
         "success" => false,
@@ -26,6 +31,7 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
+
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
@@ -35,18 +41,46 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    $resultado_publicado_bool = (
+        $resultado_publicado === '1' ||
+        strtolower($resultado_publicado) === 'true'
+    );
+
     $stmt = $pdo->prepare("
         INSERT INTO public.enquete_campanhas
-        (titulo, descricao, encerra_em)
+        (
+            titulo,
+            descricao,
+            encerra_em,
+
+            resultado_titulo,
+            resultado_descricao,
+            resultado_link,
+            resultado_publicado
+        )
         VALUES
-        (:titulo, :descricao, :encerra_em)
+        (
+            :titulo,
+            :descricao,
+            :encerra_em,
+
+            :resultado_titulo,
+            :resultado_descricao,
+            :resultado_link,
+            :resultado_publicado
+        )
         RETURNING id
     ");
 
     $stmt->execute([
         ':titulo' => $titulo,
         ':descricao' => $descricao,
-        ':encerra_em' => $encerra_em
+        ':encerra_em' => $encerra_em,
+
+        ':resultado_titulo' => $resultado_titulo,
+        ':resultado_descricao' => $resultado_descricao,
+        ':resultado_link' => $resultado_link,
+        ':resultado_publicado' => $resultado_publicado_bool
     ]);
 
     $campanha_id = $stmt->fetchColumn();
@@ -58,6 +92,7 @@ try {
     ]);
 
 } catch (Exception $e) {
+
     echo json_encode([
         "success" => false,
         "message" => "Erro ao criar campanha",

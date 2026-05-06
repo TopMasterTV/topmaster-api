@@ -1,9 +1,9 @@
 <?php
 header("Content-Type: application/json");
 
-$pergunta = $_POST['pergunta'] ?? '';
-$max_opcoes = $_POST['max_opcoes'] ?? 1;
-$opcoes = $_POST['opcoes'] ?? '';
+$pergunta = $_REQUEST['pergunta'] ?? '';
+$max_opcoes = $_REQUEST['max_opcoes'] ?? 1;
+$opcoes = $_REQUEST['opcoes'] ?? '';
 
 if ($pergunta === '' || $opcoes === '') {
     echo json_encode([

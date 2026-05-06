@@ -1,14 +1,15 @@
 <?php
 header("Content-Type: application/json");
 
-$pergunta = $_REQUEST['pergunta'] ?? '';
-$max_opcoes = $_REQUEST['max_opcoes'] ?? 1;
-$opcoes = $_REQUEST['opcoes'] ?? '';
+$campanha_id = $_REQUEST['campanha_id'] ?? '';
+$pergunta    = $_REQUEST['pergunta'] ?? '';
+$max_opcoes  = $_REQUEST['max_opcoes'] ?? 1;
+$opcoes      = $_REQUEST['opcoes'] ?? '';
 
-if ($pergunta === '' || $opcoes === '') {
+if ($campanha_id === '' || $pergunta === '' || $opcoes === '') {
     echo json_encode([
         "success" => false,
-        "message" => "Pergunta e opções são obrigatórias"
+        "message" => "campanha_id, pergunta e opções são obrigatórios"
     ]);
     exit;
 }
@@ -38,12 +39,15 @@ try {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("
-        INSERT INTO public.enquetes (pergunta, max_opcoes)
-        VALUES (:pergunta, :max_opcoes)
+        INSERT INTO public.enquetes
+        (campanha_id, pergunta, max_opcoes)
+        VALUES
+        (:campanha_id, :pergunta, :max_opcoes)
         RETURNING id
     ");
 
     $stmt->execute([
+        ':campanha_id' => $campanha_id,
         ':pergunta' => $pergunta,
         ':max_opcoes' => $max_opcoes
     ]);
@@ -58,8 +62,10 @@ try {
         if ($texto === '') continue;
 
         $stmtOpcao = $pdo->prepare("
-            INSERT INTO public.enquete_opcoes (enquete_id, texto)
-            VALUES (:enquete_id, :texto)
+            INSERT INTO public.enquete_opcoes
+            (enquete_id, texto)
+            VALUES
+            (:enquete_id, :texto)
         ");
 
         $stmtOpcao->execute([
@@ -73,6 +79,7 @@ try {
     echo json_encode([
         "success" => true,
         "message" => "Enquete criada com sucesso",
+        "campanha_id" => $campanha_id,
         "enquete_id" => $enquete_id
     ]);
 

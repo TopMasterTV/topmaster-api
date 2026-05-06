@@ -1,11 +1,17 @@
 <?php
 header("Content-Type: application/json");
 
-$id         = $_REQUEST['id'] ?? '';
-$titulo     = $_REQUEST['titulo'] ?? '';
-$descricao  = $_REQUEST['descricao'] ?? '';
+$id = $_REQUEST['id'] ?? '';
+
+$titulo = $_REQUEST['titulo'] ?? '';
+$descricao = $_REQUEST['descricao'] ?? '';
 $encerra_em = $_REQUEST['encerra_em'] ?? '';
-$ativa      = $_REQUEST['ativa'] ?? '';
+$ativa = $_REQUEST['ativa'] ?? '';
+
+$resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
+$resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
+$resultado_link = $_REQUEST['resultado_link'] ?? '';
+$resultado_publicado = $_REQUEST['resultado_publicado'] ?? '';
 
 if ($id === '') {
     echo json_encode([
@@ -56,9 +62,36 @@ try {
     }
 
     if ($ativa !== '') {
-        $ativaBool = ($ativa === '1' || strtolower($ativa) === 'true' || strtolower($ativa) === 'sim');
         $campos[] = "ativa = :ativa";
-        $params[':ativa'] = $ativaBool;
+        $params[':ativa'] = (
+            $ativa === '1' ||
+            strtolower($ativa) === 'true' ||
+            strtolower($ativa) === 'sim'
+        );
+    }
+
+    if ($resultado_titulo !== '') {
+        $campos[] = "resultado_titulo = :resultado_titulo";
+        $params[':resultado_titulo'] = $resultado_titulo;
+    }
+
+    if ($resultado_descricao !== '') {
+        $campos[] = "resultado_descricao = :resultado_descricao";
+        $params[':resultado_descricao'] = $resultado_descricao;
+    }
+
+    if ($resultado_link !== '') {
+        $campos[] = "resultado_link = :resultado_link";
+        $params[':resultado_link'] = $resultado_link;
+    }
+
+    if ($resultado_publicado !== '') {
+        $campos[] = "resultado_publicado = :resultado_publicado";
+        $params[':resultado_publicado'] = (
+            $resultado_publicado === '1' ||
+            strtolower($resultado_publicado) === 'true' ||
+            strtolower($resultado_publicado) === 'sim'
+        );
     }
 
     if (count($campos) === 0) {

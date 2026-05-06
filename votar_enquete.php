@@ -1,24 +1,15 @@
 <?php
 header("Content-Type: application/json");
 
-$cliente_id = $_REQUEST['cliente_id'] ?? '';
-$enquete_id = $_REQUEST['enquete_id'] ?? '';
-$opcoes_raw = $_REQUEST['opcoes'] ?? ($_REQUEST['opcao_id'] ?? '');
+$campanha_id = $_REQUEST['campanha_id'] ?? '';
+$cliente_id  = $_REQUEST['cliente_id'] ?? '';
+$codigo      = trim($_REQUEST['codigo'] ?? '');
+$respostas_raw = $_REQUEST['respostas'] ?? '';
 
-if ($cliente_id === '' || $enquete_id === '' || $opcoes_raw === '') {
+if ($campanha_id === '' || $cliente_id === '' || $codigo === '' || $respostas_raw === '') {
     echo json_encode([
         "success" => false,
-        "message" => "cliente_id, enquete_id e opcoes são obrigatórios"
-    ]);
-    exit;
-}
-
-$opcoes = array_filter(array_map('trim', explode(',', $opcoes_raw)));
-
-if (count($opcoes) === 0) {
-    echo json_encode([
-        "success" => false,
-        "message" => "Nenhuma opção válida enviada"
+        "message" => "campanha_id, cliente_id, codigo e respostas são obrigatórios"
     ]);
     exit;
 }
@@ -45,98 +36,187 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $stmtEnquete = $pdo->prepare("
-        SELECT max_opcoes, ativa
-        FROM public.enquetes
-        WHERE id = :enquete_id
+    $stmtCampanha = $pdo->prepare("
+        SELECT id, ativa, encerra_em
+        FROM public.enquete_campanhas
+        WHERE id = :campanha_id
         LIMIT 1
     ");
 
-    $stmtEnquete->execute([
-        ':enquete_id' => $enquete_id
+    $stmtCampanha->execute([
+        ':campanha_id' => $campanha_id
     ]);
 
-    $enquete = $stmtEnquete->fetch(PDO::FETCH_ASSOC);
+    $campanha = $stmtCampanha->fetch(PDO::FETCH_ASSOC);
 
-    if (!$enquete) {
+    if (!$campanha) {
         echo json_encode([
             "success" => false,
-            "message" => "Enquete não encontrada"
+            "message" => "Campanha não encontrada"
         ]);
         exit;
     }
 
-    if ($enquete['ativa'] !== true && $enquete['ativa'] !== 't' && $enquete['ativa'] !== '1') {
+    if ($campanha['ativa'] !== true && $campanha['ativa'] !== 't' && $campanha['ativa'] !== '1') {
         echo json_encode([
             "success" => false,
-            "message" => "Enquete inativa"
+            "message" => "Campanha inativa"
         ]);
         exit;
     }
 
-    $max_opcoes = intval($enquete['max_opcoes']);
+    $agora = new DateTime();
+    $encerra = new DateTime($campanha['encerra_em']);
 
-    if (count($opcoes) > $max_opcoes) {
+    if ($agora > $encerra) {
         echo json_encode([
             "success" => false,
-            "message" => "Você só pode escolher até {$max_opcoes} opção/opções"
+            "message" => "Enquete encerrada. Aguarde o resultado."
         ]);
         exit;
     }
 
-    $check = $pdo->prepare("
+    $checkCodigo = $pdo->prepare("
         SELECT id
-        FROM public.enquete_respostas
-        WHERE cliente_id = :cliente_id
-        AND enquete_id = :enquete_id
+        FROM public.enquete_participacoes
+        WHERE campanha_id = :campanha_id
+        AND cliente_id = :cliente_id
+        AND codigo = :codigo
         LIMIT 1
     ");
 
-    $check->execute([
+    $checkCodigo->execute([
+        ':campanha_id' => $campanha_id,
         ':cliente_id' => $cliente_id,
-        ':enquete_id' => $enquete_id
+        ':codigo' => $codigo
     ]);
 
-    if ($check->fetch()) {
+    if ($checkCodigo->fetch()) {
         echo json_encode([
             "success" => false,
-            "message" => "Cliente já votou nesta enquete"
+            "message" => "Este código já foi usado por este cliente nesta campanha"
+        ]);
+        exit;
+    }
+
+    $blocos = array_filter(array_map('trim', explode('|', $respostas_raw)));
+
+    if (count($blocos) === 0) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Nenhuma resposta válida enviada"
         ]);
         exit;
     }
 
     $pdo->beginTransaction();
 
-    foreach ($opcoes as $opcao_id) {
-        $stmt = $pdo->prepare("
-            INSERT INTO public.enquete_respostas
-            (cliente_id, enquete_id, opcao_id)
-            VALUES
-            (:cliente_id, :enquete_id, :opcao_id)
+    $stmtParticipacao = $pdo->prepare("
+        INSERT INTO public.enquete_participacoes
+        (campanha_id, cliente_id, codigo)
+        VALUES
+        (:campanha_id, :cliente_id, :codigo)
+        RETURNING id
+    ");
+
+    $stmtParticipacao->execute([
+        ':campanha_id' => $campanha_id,
+        ':cliente_id' => $cliente_id,
+        ':codigo' => $codigo
+    ]);
+
+    $participacao_id = $stmtParticipacao->fetchColumn();
+
+    foreach ($blocos as $bloco) {
+        $partes = explode(':', $bloco);
+
+        if (count($partes) !== 2) {
+            throw new Exception("Formato inválido em respostas");
+        }
+
+        $enquete_id = trim($partes[0]);
+        $opcoes = array_filter(array_map('trim', explode(',', $partes[1])));
+
+        if ($enquete_id === '' || count($opcoes) === 0) {
+            continue;
+        }
+
+        $stmtEnquete = $pdo->prepare("
+            SELECT id, max_opcoes
+            FROM public.enquetes
+            WHERE id = :enquete_id
+            AND campanha_id = :campanha_id
+            AND ativa = true
+            LIMIT 1
         ");
 
-        $stmt->execute([
-            ':cliente_id' => $cliente_id,
+        $stmtEnquete->execute([
             ':enquete_id' => $enquete_id,
-            ':opcao_id' => $opcao_id
+            ':campanha_id' => $campanha_id
         ]);
+
+        $enquete = $stmtEnquete->fetch(PDO::FETCH_ASSOC);
+
+        if (!$enquete) {
+            throw new Exception("Enquete inválida ou não pertence a esta campanha");
+        }
+
+        $max_opcoes = intval($enquete['max_opcoes']);
+
+        if (count($opcoes) > $max_opcoes) {
+            throw new Exception("A enquete {$enquete_id} permite no máximo {$max_opcoes} opção/opções");
+        }
+
+        foreach ($opcoes as $opcao_id) {
+            $stmtOpcao = $pdo->prepare("
+                SELECT id
+                FROM public.enquete_opcoes
+                WHERE id = :opcao_id
+                AND enquete_id = :enquete_id
+                LIMIT 1
+            ");
+
+            $stmtOpcao->execute([
+                ':opcao_id' => $opcao_id,
+                ':enquete_id' => $enquete_id
+            ]);
+
+            if (!$stmtOpcao->fetch()) {
+                throw new Exception("Opção inválida para a enquete {$enquete_id}");
+            }
+
+            $stmtResposta = $pdo->prepare("
+                INSERT INTO public.enquete_respostas
+                (participacao_id, enquete_id, opcao_id, cliente_id)
+                VALUES
+                (:participacao_id, :enquete_id, :opcao_id, :cliente_id)
+            ");
+
+            $stmtResposta->execute([
+                ':participacao_id' => $participacao_id,
+                ':enquete_id' => $enquete_id,
+                ':opcao_id' => $opcao_id,
+                ':cliente_id' => $cliente_id
+            ]);
+        }
     }
 
     $pdo->commit();
 
     echo json_encode([
         "success" => true,
-        "message" => "Voto registrado com sucesso"
+        "message" => "Participação registrada com sucesso",
+        "participacao_id" => $participacao_id
     ]);
 
 } catch (Exception $e) {
-    if (isset($pdo)) {
+    if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
 
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao votar",
+        "message" => "Erro ao registrar participação",
         "error" => $e->getMessage()
     ]);
 }

@@ -7,6 +7,7 @@ $titulo = $_REQUEST['titulo'] ?? '';
 $descricao = $_REQUEST['descricao'] ?? '';
 $encerra_em = $_REQUEST['encerra_em'] ?? '';
 $ativa = $_REQUEST['ativa'] ?? '';
+$modo_participacao = $_REQUEST['modo_participacao'] ?? '';
 
 $resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
 $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
@@ -17,6 +18,18 @@ if ($id === '') {
     echo json_encode([
         "success" => false,
         "message" => "id obrigatório"
+    ]);
+    exit;
+}
+
+if (
+    $modo_participacao !== '' &&
+    $modo_participacao !== 'codigo' &&
+    $modo_participacao !== 'livre'
+) {
+    echo json_encode([
+        "success" => false,
+        "message" => "modo_participacao inválido"
     ]);
     exit;
 }
@@ -68,6 +81,11 @@ try {
             strtolower($ativa) === 'true' ||
             strtolower($ativa) === 'sim'
         );
+    }
+
+    if ($modo_participacao !== '') {
+        $campos[] = "modo_participacao = :modo_participacao";
+        $params[':modo_participacao'] = $modo_participacao;
     }
 
     if ($resultado_titulo !== '') {

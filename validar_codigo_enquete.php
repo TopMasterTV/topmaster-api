@@ -1,24 +1,41 @@
 <?php
+header("Content-Type: application/json");
 
-header('Content-Type: application/json');
+$codigo = trim($_REQUEST['codigo'] ?? '');
 
-require_once 'conexao.php';
+if ($codigo === '') {
+    echo json_encode([
+        "success" => false,
+        "message" => "codigo obrigatório"
+    ]);
+    exit;
+}
+
+$DATABASE_URL = getenv("DATABASE_URL");
+
+if (!$DATABASE_URL) {
+    echo json_encode([
+        "success" => false,
+        "message" => "DATABASE_URL não definida"
+    ]);
+    exit;
+}
+
+$db = parse_url($DATABASE_URL);
 
 try {
+    $pdo = new PDO(
+        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
+        ";dbname=" . ltrim($db['path'], '/') .
+        ";sslmode=require",
+        $db['user'],
+        $db['pass'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
 
-    $codigo = $_GET['codigo'] ?? '';
-
-    if (empty($codigo)) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Código não informado"
-        ]);
-        exit;
-    }
-
-    $sql = "
-        SELECT 
-            ec.id,
+    $stmt = $pdo->prepare("
+        SELECT
+            ec.id AS codigo_id,
             ec.codigo,
             ec.campanha_id,
             ec.cliente_id,
@@ -26,81 +43,84 @@ try {
 
             c.nome AS cliente_nome,
 
-            camp.nome AS campanha_nome,
-            camp.status,
-            camp.data_encerramento
+            camp.titulo AS campanha_titulo,
+            camp.descricao AS campanha_descricao,
+            camp.ativa AS campanha_ativa,
+            camp.encerra_em,
 
-        FROM enquete_codigos ec
+            camp.resultado_titulo,
+            camp.resultado_descricao,
+            camp.resultado_link,
+            camp.resultado_publicado
 
-        INNER JOIN clientes c
+        FROM public.enquete_codigos ec
+        INNER JOIN public.clientes c
             ON c.id = ec.cliente_id
-
-        INNER JOIN enquete_campanhas camp
+        INNER JOIN public.enquete_campanhas camp
             ON camp.id = ec.campanha_id
-
         WHERE ec.codigo = :codigo
         LIMIT 1
-    ";
+    ");
 
-    $stmt = $pdo->prepare($sql);
-
-    $stmt->bindValue(':codigo', $codigo);
-
-    $stmt->execute();
+    $stmt->execute([
+        ':codigo' => $codigo
+    ]);
 
     $dados = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$dados) {
-
         echo json_encode([
             "success" => false,
             "message" => "Código inválido"
         ]);
-
         exit;
     }
 
-    if (!$dados['ativo']) {
-
+    if (
+        $dados['ativo'] !== true &&
+        $dados['ativo'] !== 't' &&
+        $dados['ativo'] !== '1'
+    ) {
         echo json_encode([
             "success" => false,
             "message" => "Código desativado"
         ]);
-
         exit;
     }
 
-    if ($dados['status'] !== 'ativa') {
+    if (
+        $dados['campanha_ativa'] !== true &&
+        $dados['campanha_ativa'] !== 't' &&
+        $dados['campanha_ativa'] !== '1'
+    ) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Campanha inativa"
+        ]);
+        exit;
+    }
 
+    $agora = new DateTime();
+    $encerra = new DateTime($dados['encerra_em']);
+
+    if ($agora >= $encerra) {
         echo json_encode([
             "success" => false,
             "message" => "Campanha encerrada"
         ]);
-
         exit;
     }
 
     echo json_encode([
         "success" => true,
         "message" => "Código válido",
-        "dados" => [
-            "codigo_id" => $dados['id'],
-            "codigo" => $dados['codigo'],
-
-            "cliente_id" => $dados['cliente_id'],
-            "cliente_nome" => $dados['cliente_nome'],
-
-            "campanha_id" => $dados['campanha_id'],
-            "campanha_nome" => $dados['campanha_nome'],
-
-            "data_encerramento" => $dados['data_encerramento']
-        ]
+        "dados" => $dados
     ]);
 
 } catch (Exception $e) {
-
     echo json_encode([
         "success" => false,
-        "message" => $e->getMessage()
+        "message" => "Erro ao validar código",
+        "error" => $e->getMessage()
     ]);
 }

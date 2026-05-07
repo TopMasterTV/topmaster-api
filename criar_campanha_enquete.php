@@ -5,6 +5,8 @@ $titulo = $_REQUEST['titulo'] ?? '';
 $descricao = $_REQUEST['descricao'] ?? '';
 $encerra_em = $_REQUEST['encerra_em'] ?? '';
 
+$modo_participacao = $_REQUEST['modo_participacao'] ?? 'codigo';
+
 $resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
 $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
 $resultado_link = $_REQUEST['resultado_link'] ?? '';
@@ -14,6 +16,14 @@ if ($titulo === '' || $encerra_em === '') {
     echo json_encode([
         "success" => false,
         "message" => "titulo e encerra_em são obrigatórios"
+    ]);
+    exit;
+}
+
+if ($modo_participacao !== 'codigo' && $modo_participacao !== 'livre') {
+    echo json_encode([
+        "success" => false,
+        "message" => "modo_participacao inválido"
     ]);
     exit;
 }
@@ -31,7 +41,6 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
-
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
@@ -52,7 +61,7 @@ try {
             titulo,
             descricao,
             encerra_em,
-
+            modo_participacao,
             resultado_titulo,
             resultado_descricao,
             resultado_link,
@@ -63,7 +72,7 @@ try {
             :titulo,
             :descricao,
             :encerra_em,
-
+            :modo_participacao,
             :resultado_titulo,
             :resultado_descricao,
             :resultado_link,
@@ -76,23 +85,20 @@ try {
         ':titulo' => $titulo,
         ':descricao' => $descricao,
         ':encerra_em' => $encerra_em,
-
+        ':modo_participacao' => $modo_participacao,
         ':resultado_titulo' => $resultado_titulo,
         ':resultado_descricao' => $resultado_descricao,
         ':resultado_link' => $resultado_link,
         ':resultado_publicado' => $resultado_publicado_bool
     ]);
 
-    $campanha_id = $stmt->fetchColumn();
-
     echo json_encode([
         "success" => true,
         "message" => "Campanha criada com sucesso",
-        "campanha_id" => $campanha_id
+        "campanha_id" => $stmt->fetchColumn()
     ]);
 
 } catch (Exception $e) {
-
     echo json_encode([
         "success" => false,
         "message" => "Erro ao criar campanha",

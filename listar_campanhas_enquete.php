@@ -33,6 +33,8 @@ try {
             encerra_em,
             criado_em,
 
+            modo_participacao,
+
             resultado_titulo,
             resultado_descricao,
             resultado_link,

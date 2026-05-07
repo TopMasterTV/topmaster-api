@@ -1,219 +1,196 @@
 <?php
-header("Content-Type: application/json");
 
-$campanha_id = $_REQUEST['campanha_id'] ?? '';
-$enquete_id = $_REQUEST['enquete_id'] ?? '';
-$cliente_id = $_REQUEST['cliente_id'] ?? '';
-$participacao_id = $_REQUEST['participacao_id'] ?? '';
-$opcoes_ids = $_REQUEST['opcoes_ids'] ?? '';
+header('Content-Type: application/json');
 
-if ($campanha_id === '' || $enquete_id === '' || $cliente_id === '' || $opcoes_ids === '') {
+include 'conexao.php';
+
+// ==========================================
+// FUSO HORÁRIO BRASIL
+// ==========================================
+date_default_timezone_set('America/Sao_Paulo');
+
+// ==========================================
+// DADOS
+// ==========================================
+$campanha_id = $_GET['campanha_id'] ?? null;
+$enquete_id = $_GET['enquete_id'] ?? null;
+$cliente_id = $_GET['cliente_id'] ?? null;
+$participacao_id = $_GET['participacao_id'] ?? null;
+$opcoes_ids = $_GET['opcoes_ids'] ?? null;
+
+// ==========================================
+// VALIDAÇÕES
+// ==========================================
+if (
+    empty($campanha_id) ||
+    empty($enquete_id) ||
+    empty($cliente_id) ||
+    empty($opcoes_ids)
+) {
     echo json_encode([
-        "success" => false,
-        "message" => "campanha_id, enquete_id, cliente_id e opcoes_ids são obrigatórios"
+        'success' => false,
+        'message' => 'Dados obrigatórios'
     ]);
     exit;
 }
 
-$DATABASE_URL = getenv("DATABASE_URL");
+// ==========================================
+// BUSCAR CAMPANHA
+// ==========================================
+$sqlCampanha = "
+SELECT 
+    id,
+    modo_participacao,
+    encerramento_em
+FROM enquete_campanhas
+WHERE id = :id
+LIMIT 1
+";
 
-if (!$DATABASE_URL) {
+$stmtCampanha = $pdo->prepare($sqlCampanha);
+$stmtCampanha->bindParam(':id', $campanha_id);
+$stmtCampanha->execute();
+
+$campanha = $stmtCampanha->fetch(PDO::FETCH_ASSOC);
+
+if (!$campanha) {
     echo json_encode([
-        "success" => false,
-        "message" => "DATABASE_URL não definida"
+        'success' => false,
+        'message' => 'Campanha não encontrada'
     ]);
     exit;
 }
 
-$db = parse_url($DATABASE_URL);
+// ==========================================
+// VERIFICAR ENCERRAMENTO
+// ==========================================
+$agora = date('Y-m-d H:i:s');
 
-try {
-    $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
-        ";dbname=" . ltrim($db['path'], '/') .
-        ";sslmode=require",
-        $db['user'],
-        $db['pass'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-
-    $stmtCampanha = $pdo->prepare("
-        SELECT id, ativa, encerra_em, modo_participacao
-        FROM public.enquete_campanhas
-        WHERE id = :campanha_id
-        LIMIT 1
-    ");
-    $stmtCampanha->execute([':campanha_id' => $campanha_id]);
-    $campanha = $stmtCampanha->fetch(PDO::FETCH_ASSOC);
-
-    if (!$campanha) {
-        echo json_encode(["success" => false, "message" => "Campanha não encontrada"]);
-        exit;
-    }
-
-    if ($campanha['ativa'] !== true && $campanha['ativa'] !== 't' && $campanha['ativa'] !== '1') {
-        echo json_encode(["success" => false, "message" => "Campanha inativa"]);
-        exit;
-    }
-
-    $agora = new DateTime();
-    $encerra = new DateTime($campanha['encerra_em']);
-
-    if ($agora >= $encerra) {
-        echo json_encode(["success" => false, "message" => "Campanha encerrada"]);
-        exit;
-    }
-
-    $stmtEnquete = $pdo->prepare("
-        SELECT id, max_opcoes
-        FROM public.enquetes
-        WHERE id = :enquete_id
-        AND campanha_id = :campanha_id
-        AND ativa = true
-        LIMIT 1
-    ");
-    $stmtEnquete->execute([
-        ':enquete_id' => $enquete_id,
-        ':campanha_id' => $campanha_id
+if (
+    !empty($campanha['encerramento_em']) &&
+    $agora > $campanha['encerramento_em']
+) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Campanha encerrada',
+        'agora' => $agora,
+        'encerra_em' => $campanha['encerramento_em']
     ]);
-    $enquete = $stmtEnquete->fetch(PDO::FETCH_ASSOC);
+    exit;
+}
 
-    if (!$enquete) {
-        echo json_encode(["success" => false, "message" => "Enquete não encontrada ou inativa"]);
-        exit;
-    }
+// ==========================================
+// MODO LIVRE
+// ==========================================
+if ($campanha['modo_participacao'] === 'livre') {
 
-    $opcoes = array_filter(array_map('trim', explode(',', $opcoes_ids)));
+    $sqlExiste = "
+    SELECT id
+    FROM enquete_respostas
+    WHERE campanha_id = :campanha_id
+    AND cliente_id = :cliente_id
+    LIMIT 1
+    ";
 
-    if (count($opcoes) === 0) {
-        echo json_encode(["success" => false, "message" => "Nenhuma opção válida enviada"]);
-        exit;
-    }
+    $stmtExiste = $pdo->prepare($sqlExiste);
+    $stmtExiste->bindParam(':campanha_id', $campanha_id);
+    $stmtExiste->bindParam(':cliente_id', $cliente_id);
+    $stmtExiste->execute();
 
-    $max_opcoes = intval($enquete['max_opcoes']);
-
-    if (count($opcoes) > $max_opcoes) {
+    if ($stmtExiste->fetch()) {
         echo json_encode([
-            "success" => false,
-            "message" => "Esta enquete permite no máximo {$max_opcoes} opção/opções"
+            'success' => false,
+            'message' => 'Cliente já votou nesta campanha'
+        ]);
+        exit;
+    }
+}
+
+// ==========================================
+// MODO CÓDIGO
+// ==========================================
+if ($campanha['modo_participacao'] === 'codigo') {
+
+    if (empty($participacao_id)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'participacao_id obrigatório'
         ]);
         exit;
     }
 
-    foreach ($opcoes as $opcao_id) {
-        $stmtOpcao = $pdo->prepare("
-            SELECT id
-            FROM public.enquete_opcoes
-            WHERE id = :opcao_id
-            AND enquete_id = :enquete_id
-            LIMIT 1
-        ");
-        $stmtOpcao->execute([
-            ':opcao_id' => $opcao_id,
-            ':enquete_id' => $enquete_id
+    $sqlExiste = "
+    SELECT id
+    FROM enquete_respostas
+    WHERE participacao_id = :participacao_id
+    LIMIT 1
+    ";
+
+    $stmtExiste = $pdo->prepare($sqlExiste);
+    $stmtExiste->bindParam(':participacao_id', $participacao_id);
+    $stmtExiste->execute();
+
+    if ($stmtExiste->fetch()) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Este código já votou'
         ]);
-
-        if (!$stmtOpcao->fetch()) {
-            echo json_encode([
-                "success" => false,
-                "message" => "Opção inválida para esta enquete"
-            ]);
-            exit;
-        }
+        exit;
     }
-
-    $modo = $campanha['modo_participacao'];
-
-    if ($modo === 'codigo') {
-        if ($participacao_id === '') {
-            echo json_encode([
-                "success" => false,
-                "message" => "participacao_id é obrigatório para campanha por código"
-            ]);
-            exit;
-        }
-
-        $stmtPart = $pdo->prepare("
-            SELECT id
-            FROM public.enquete_participacoes
-            WHERE id = :participacao_id
-            AND campanha_id = :campanha_id
-            AND cliente_id = :cliente_id
-            LIMIT 1
-        ");
-        $stmtPart->execute([
-            ':participacao_id' => $participacao_id,
-            ':campanha_id' => $campanha_id,
-            ':cliente_id' => $cliente_id
-        ]);
-
-        if (!$stmtPart->fetch()) {
-            echo json_encode([
-                "success" => false,
-                "message" => "Participação inválida para este cliente/campanha"
-            ]);
-            exit;
-        }
-    } else {
-        $participacao_id = null;
-    }
-
-    $pdo->beginTransaction();
-
-    if ($modo === 'livre') {
-        $stmtDelete = $pdo->prepare("
-            DELETE FROM public.enquete_respostas
-            WHERE enquete_id = :enquete_id
-            AND cliente_id = :cliente_id
-            AND participacao_id IS NULL
-        ");
-        $stmtDelete->execute([
-            ':enquete_id' => $enquete_id,
-            ':cliente_id' => $cliente_id
-        ]);
-    } else {
-        $stmtDelete = $pdo->prepare("
-            DELETE FROM public.enquete_respostas
-            WHERE enquete_id = :enquete_id
-            AND participacao_id = :participacao_id
-        ");
-        $stmtDelete->execute([
-            ':enquete_id' => $enquete_id,
-            ':participacao_id' => $participacao_id
-        ]);
-    }
-
-    foreach ($opcoes as $opcao_id) {
-        $stmtInsert = $pdo->prepare("
-            INSERT INTO public.enquete_respostas
-            (participacao_id, enquete_id, opcao_id, cliente_id)
-            VALUES
-            (:participacao_id, :enquete_id, :opcao_id, :cliente_id)
-        ");
-
-        $stmtInsert->execute([
-            ':participacao_id' => $participacao_id,
-            ':enquete_id' => $enquete_id,
-            ':opcao_id' => $opcao_id,
-            ':cliente_id' => $cliente_id
-        ]);
-    }
-
-    $pdo->commit();
-
-    echo json_encode([
-        "success" => true,
-        "message" => "Voto salvo com sucesso"
-    ]);
-
-} catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
-
-    echo json_encode([
-        "success" => false,
-        "message" => "Erro ao salvar voto",
-        "error" => $e->getMessage()
-    ]);
 }
+
+// ==========================================
+// PROCESSAR OPÇÕES
+// ==========================================
+$listaOpcoes = explode(',', $opcoes_ids);
+
+foreach ($listaOpcoes as $opcao_id) {
+
+    $opcao_id = trim($opcao_id);
+
+    if (empty($opcao_id)) {
+        continue;
+    }
+
+    $sqlInsert = "
+    INSERT INTO enquete_respostas (
+        campanha_id,
+        enquete_id,
+        opcao_id,
+        cliente_id,
+        participacao_id,
+        respondido_em
+    )
+    VALUES (
+        :campanha_id,
+        :enquete_id,
+        :opcao_id,
+        :cliente_id,
+        :participacao_id,
+        NOW()
+    )
+    ";
+
+    $stmtInsert = $pdo->prepare($sqlInsert);
+
+    $stmtInsert->bindParam(':campanha_id', $campanha_id);
+    $stmtInsert->bindParam(':enquete_id', $enquete_id);
+    $stmtInsert->bindParam(':opcao_id', $opcao_id);
+    $stmtInsert->bindParam(':cliente_id', $cliente_id);
+
+    if (empty($participacao_id)) {
+        $stmtInsert->bindValue(':participacao_id', null, PDO::PARAM_NULL);
+    } else {
+        $stmtInsert->bindParam(':participacao_id', $participacao_id);
+    }
+
+    $stmtInsert->execute();
+}
+
+// ==========================================
+// SUCESSO
+// ==========================================
+echo json_encode([
+    'success' => true,
+    'message' => 'Resposta salva com sucesso'
+]);

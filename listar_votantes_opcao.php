@@ -60,15 +60,22 @@ try {
 
     $stmt = $pdo->prepare("
         SELECT
-            id,
-            enquete_id,
-            opcao_id,
-            cliente_id,
-            participacao_id,
-            respondido_em
-        FROM public.enquete_respostas
-        WHERE enquete_id = :enquete_id
-        AND opcao_id = :opcao_id
+    r.id,
+    r.enquete_id,
+    r.opcao_id,
+    r.cliente_id,
+    r.participacao_id,
+    r.respondido_em,
+
+    c.nome,
+    c.usuario
+
+FROM public.enquete_respostas r
+
+LEFT JOIN public.clientes c
+ON c.id = r.cliente_id
+        WHERE r.enquete_id = :enquete_id
+        AND r.opcao_id = :opcao_id
         ORDER BY respondido_em DESC
     ");
 

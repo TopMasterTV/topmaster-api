@@ -60,23 +60,25 @@ try {
 
     $stmt = $pdo->prepare("
         SELECT
-    r.id,
-    r.enquete_id,
-    r.opcao_id,
-    r.cliente_id,
-    r.participacao_id,
-    r.respondido_em,
+            r.id,
+            r.enquete_id,
+            r.opcao_id,
+            r.cliente_id,
+            r.participacao_id,
 
-    c.nome,
-    c.usuario
+            TO_CHAR(
+                r.respondido_em AT TIME ZONE 'America/Sao_Paulo',
+                'DD/MM/YYYY HH24:MI'
+            ) AS respondido_em,
 
-FROM public.enquete_respostas r
-
-LEFT JOIN public.clientes c
-ON c.id = r.cliente_id
+            c.nome,
+            c.usuario
+        FROM public.enquete_respostas r
+        LEFT JOIN public.clientes c
+        ON c.id = r.cliente_id
         WHERE r.enquete_id = :enquete_id
         AND r.opcao_id = :opcao_id
-        ORDER BY respondido_em DESC
+        ORDER BY c.nome ASC
     ");
 
     $stmt->execute([

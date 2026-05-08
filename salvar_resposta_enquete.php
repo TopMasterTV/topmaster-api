@@ -39,7 +39,6 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    // CAMPANHA
     $stmtCampanha = $pdo->prepare("
         SELECT id, ativa, encerra_em, modo_participacao
         FROM public.enquete_campanhas
@@ -86,7 +85,6 @@ try {
         exit;
     }
 
-    // ENQUETE
     $stmtEnquete = $pdo->prepare("
         SELECT id, max_opcoes
         FROM public.enquetes
@@ -111,7 +109,6 @@ try {
         exit;
     }
 
-    // OPÇÕES
     $opcoes = array_filter(array_map('trim', explode(',', $opcoes_ids)));
 
     if (count($opcoes) === 0) {
@@ -133,7 +130,6 @@ try {
     }
 
     foreach ($opcoes as $opcao_id) {
-
         $stmtOpcao = $pdo->prepare("
             SELECT id
             FROM public.enquete_opcoes
@@ -158,9 +154,7 @@ try {
 
     $modo = $campanha['modo_participacao'];
 
-    // PARTICIPAÇÃO POR CÓDIGO
     if ($modo === 'codigo') {
-
         if ($participacao_id === '') {
             echo json_encode([
                 "success" => false,
@@ -191,17 +185,13 @@ try {
             ]);
             exit;
         }
-
     } else {
-
         $participacao_id = null;
     }
 
     $pdo->beginTransaction();
 
-    // REMOVE VOTO ANTERIOR
     if ($modo === 'livre') {
-
         $stmtDelete = $pdo->prepare("
             DELETE FROM public.enquete_respostas
             WHERE enquete_id = :enquete_id
@@ -213,9 +203,7 @@ try {
             ':enquete_id' => $enquete_id,
             ':cliente_id' => $cliente_id
         ]);
-
     } else {
-
         $stmtDelete = $pdo->prepare("
             DELETE FROM public.enquete_respostas
             WHERE enquete_id = :enquete_id
@@ -228,9 +216,7 @@ try {
         ]);
     }
 
-    // SALVAR RESPOSTAS
     foreach ($opcoes as $opcao_id) {
-
         $stmtInsert = $pdo->prepare("
             INSERT INTO public.enquete_respostas
             (
@@ -246,7 +232,7 @@ try {
                 :opcao_id,
                 :cliente_id,
                 :participacao_id,
-                CURRENT_TIMESTAMP
+                (NOW() AT TIME ZONE 'America/Sao_Paulo')
             )
         ");
 
@@ -266,7 +252,6 @@ try {
     ]);
 
 } catch (Exception $e) {
-
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }

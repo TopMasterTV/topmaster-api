@@ -67,7 +67,7 @@ try {
             r.participacao_id,
 
             TO_CHAR(
-                r.respondido_em AT TIME ZONE 'America/Sao_Paulo',
+                r.respondido_em,
                 'DD/MM/YYYY HH24:MI'
             ) AS respondido_em,
 

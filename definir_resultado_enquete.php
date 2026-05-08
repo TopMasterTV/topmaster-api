@@ -60,7 +60,7 @@ try {
         UPDATE public.enquetes
         SET opcao_correta_id = :opcao_correta_id
         WHERE id = :enquete_id
-        RETURNING id, titulo, opcao_correta_id
+        RETURNING id, opcao_correta_id
     ");
 
     $stmtUpdate->execute([

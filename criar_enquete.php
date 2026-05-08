@@ -2,14 +2,14 @@
 header("Content-Type: application/json");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
-$pergunta    = $_REQUEST['pergunta'] ?? '';
-$max_opcoes  = $_REQUEST['max_opcoes'] ?? 1;
-$opcoes      = $_REQUEST['opcoes'] ?? '';
+$pergunta = trim($_REQUEST['pergunta'] ?? '');
+$max_opcoes = $_REQUEST['max_opcoes'] ?? '1';
+$opcoes_raw = $_REQUEST['opcoes'] ?? '';
 
-if ($campanha_id === '' || $pergunta === '' || $opcoes === '') {
+if ($campanha_id === '' || $pergunta === '' || $opcoes_raw === '') {
     echo json_encode([
         "success" => false,
-        "message" => "campanha_id, pergunta e opções são obrigatórios"
+        "message" => "campanha_id, pergunta e opcoes são obrigatórios"
     ]);
     exit;
 }
@@ -36,41 +36,78 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    $opcoes_raw = trim($opcoes_raw);
+
+    // Remove formato de lista/JSON simples se vier assim:
+    // ["Brasil", "Marrocos", "Empate"]
+    $opcoes_raw = str_replace(["[", "]", "\""], "", $opcoes_raw);
+
+    // Aceita vírgula OU quebra de linha
+    $partes = preg_split('/[\r\n,]+/', $opcoes_raw);
+
+    $opcoes = [];
+
+    foreach ($partes as $opcao) {
+        $opcao = trim($opcao);
+
+        if ($opcao !== '') {
+            $opcoes[] = $opcao;
+        }
+    }
+
+    if (count($opcoes) === 0) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Nenhuma opção válida enviada"
+        ]);
+        exit;
+    }
+
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("
         INSERT INTO public.enquetes
-        (campanha_id, pergunta, max_opcoes)
+        (
+            campanha_id,
+            pergunta,
+            max_opcoes,
+            ativa
+        )
         VALUES
-        (:campanha_id, :pergunta, :max_opcoes)
+        (
+            :campanha_id,
+            :pergunta,
+            :max_opcoes,
+            true
+        )
         RETURNING id
     ");
 
     $stmt->execute([
         ':campanha_id' => $campanha_id,
         ':pergunta' => $pergunta,
-        ':max_opcoes' => $max_opcoes
+        ':max_opcoes' => intval($max_opcoes)
     ]);
 
     $enquete_id = $stmt->fetchColumn();
 
-    $listaOpcoes = explode('|', $opcoes);
+    $stmtOpcao = $pdo->prepare("
+        INSERT INTO public.enquete_opcoes
+        (
+            enquete_id,
+            texto
+        )
+        VALUES
+        (
+            :enquete_id,
+            :texto
+        )
+    ");
 
-    foreach ($listaOpcoes as $texto) {
-        $texto = trim($texto);
-
-        if ($texto === '') continue;
-
-        $stmtOpcao = $pdo->prepare("
-            INSERT INTO public.enquete_opcoes
-            (enquete_id, texto)
-            VALUES
-            (:enquete_id, :texto)
-        ");
-
+    foreach ($opcoes as $opcao) {
         $stmtOpcao->execute([
             ':enquete_id' => $enquete_id,
-            ':texto' => $texto
+            ':texto' => $opcao
         ]);
     }
 
@@ -79,12 +116,11 @@ try {
     echo json_encode([
         "success" => true,
         "message" => "Enquete criada com sucesso",
-        "campanha_id" => $campanha_id,
         "enquete_id" => $enquete_id
     ]);
 
 } catch (Exception $e) {
-    if (isset($pdo)) {
+    if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
 

@@ -26,24 +26,33 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
+
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
         ";sslmode=require",
         $db['user'],
         $db['pass'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+        ]
     );
 
+    // =========================
+    // CAMPANHA POR CÓDIGO
+    // =========================
     if ($participacao_id !== '') {
+
         $stmt = $pdo->prepare("
             SELECT
-                enquete_id,
-                opcao_id
-            FROM public.enquete_respostas
-            WHERE campanha_id = :campanha_id
-            AND cliente_id = :cliente_id
-            AND participacao_id = :participacao_id
+                er.enquete_id,
+                er.opcao_id
+            FROM public.enquete_respostas er
+            INNER JOIN public.enquetes e
+                ON e.id = er.enquete_id
+            WHERE e.campanha_id = :campanha_id
+            AND er.cliente_id = :cliente_id
+            AND er.participacao_id = :participacao_id
         ");
 
         $stmt->execute([
@@ -51,15 +60,24 @@ try {
             ':cliente_id' => $cliente_id,
             ':participacao_id' => $participacao_id
         ]);
-    } else {
+
+    }
+
+    // =========================
+    // CAMPANHA LIVRE
+    // =========================
+    else {
+
         $stmt = $pdo->prepare("
             SELECT
-                enquete_id,
-                opcao_id
-            FROM public.enquete_respostas
-            WHERE campanha_id = :campanha_id
-            AND cliente_id = :cliente_id
-            AND participacao_id IS NULL
+                er.enquete_id,
+                er.opcao_id
+            FROM public.enquete_respostas er
+            INNER JOIN public.enquetes e
+                ON e.id = er.enquete_id
+            WHERE e.campanha_id = :campanha_id
+            AND er.cliente_id = :cliente_id
+            AND er.participacao_id IS NULL
         ");
 
         $stmt->execute([
@@ -68,12 +86,15 @@ try {
         ]);
     }
 
+    $respostas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     echo json_encode([
         "success" => true,
-        "respostas" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        "respostas" => $respostas
     ]);
 
 } catch (Exception $e) {
+
     echo json_encode([
         "success" => false,
         "message" => "Erro ao listar respostas",

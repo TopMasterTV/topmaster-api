@@ -1,12 +1,14 @@
 <?php
 header("Content-Type: application/json");
+date_default_timezone_set("America/Sao_Paulo");
 
 $codigo = trim($_REQUEST['codigo'] ?? '');
+$cliente_id = $_REQUEST['cliente_id'] ?? '';
 
-if ($codigo === '') {
+if ($codigo === '' || $cliente_id === '') {
     echo json_encode([
         "success" => false,
-        "message" => "codigo obrigatório"
+        "message" => "codigo e cliente_id são obrigatórios"
     ]);
     exit;
 }
@@ -42,6 +44,7 @@ try {
             ec.ativo,
 
             c.nome AS cliente_nome,
+            c.usuario AS cliente_usuario,
 
             camp.titulo AS campanha_titulo,
             camp.descricao AS campanha_descricao,
@@ -76,6 +79,19 @@ try {
         exit;
     }
 
+    if (strval($dados['cliente_id']) !== strval($cliente_id)) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Este código é exclusivo de outro cliente",
+            "cliente_vinculado" => [
+                "id" => $dados['cliente_id'],
+                "nome" => $dados['cliente_nome'],
+                "usuario" => $dados['cliente_usuario']
+            ]
+        ]);
+        exit;
+    }
+
     if (
         $dados['ativo'] !== true &&
         $dados['ativo'] !== 't' &&
@@ -100,8 +116,8 @@ try {
         exit;
     }
 
-    $agora = new DateTime();
-    $encerra = new DateTime($dados['encerra_em']);
+    $agora = new DateTime("now", new DateTimeZone("America/Sao_Paulo"));
+    $encerra = new DateTime($dados['encerra_em'], new DateTimeZone("America/Sao_Paulo"));
 
     if ($agora >= $encerra) {
         echo json_encode([
@@ -114,6 +130,7 @@ try {
     echo json_encode([
         "success" => true,
         "message" => "Código válido",
+        "mensagem_vinculo" => "Código vinculado exclusivamente ao cliente " . $dados['cliente_nome'],
         "dados" => $dados
     ]);
 

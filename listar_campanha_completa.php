@@ -1,5 +1,6 @@
 <?php
 header("Content-Type: application/json");
+date_default_timezone_set("America/Sao_Paulo");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
 
@@ -40,6 +41,7 @@ try {
             WHERE id = :id
             LIMIT 1
         ");
+
         $stmtCampanha->execute([
             ':id' => $campanha_id
         ]);
@@ -70,6 +72,7 @@ try {
     $enquetes = [];
 
     while ($enquete = $stmtEnquetes->fetch(PDO::FETCH_ASSOC)) {
+
         $stmtOpcoes = $pdo->prepare("
             SELECT *
             FROM public.enquete_opcoes
@@ -81,12 +84,38 @@ try {
             ':enquete_id' => $enquete['id']
         ]);
 
-        $enquete['opcoes'] = $stmtOpcoes->fetchAll(PDO::FETCH_ASSOC);
+        $opcoes = $stmtOpcoes->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtCorretas = $pdo->prepare("
+            SELECT opcao_id
+            FROM public.enquete_opcoes_corretas
+            WHERE enquete_id = :enquete_id
+            ORDER BY opcao_id ASC
+        ");
+
+        $stmtCorretas->execute([
+            ':enquete_id' => $enquete['id']
+        ]);
+
+        $opcoesCorretasIds = [];
+
+        while ($correta = $stmtCorretas->fetch(PDO::FETCH_ASSOC)) {
+            $opcoesCorretasIds[] = intval($correta['opcao_id']);
+        }
+
+        foreach ($opcoes as &$opcao) {
+            $opcao['correta'] = in_array(intval($opcao['id']), $opcoesCorretasIds);
+        }
+
+        $enquete['opcoes'] = $opcoes;
+        $enquete['opcoes_corretas_ids'] = $opcoesCorretasIds;
+        $enquete['resultado_definido'] = count($opcoesCorretasIds) > 0;
+
         $enquetes[] = $enquete;
     }
 
-    $agora = new DateTime();
-    $encerra = new DateTime($campanha['encerra_em']);
+    $agora = new DateTime("now", new DateTimeZone("America/Sao_Paulo"));
+    $encerra = new DateTime($campanha['encerra_em'], new DateTimeZone("America/Sao_Paulo"));
     $encerrada = $agora > $encerra;
 
     echo json_encode([

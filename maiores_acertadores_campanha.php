@@ -37,8 +37,13 @@ try {
 
     $stmtTotal = $pdo->prepare("
         SELECT COUNT(*) AS total_enquetes
-        FROM public.enquetes
-        WHERE campanha_id = :campanha_id
+        FROM public.enquetes e
+        WHERE e.campanha_id = :campanha_id
+        AND EXISTS (
+            SELECT 1
+            FROM public.enquete_opcoes_corretas oc
+            WHERE oc.enquete_id = e.id
+        )
     ");
 
     $stmtTotal->execute([
@@ -53,19 +58,25 @@ try {
             c.nome,
             c.usuario,
             COUNT(*) AS total_respostas,
-            SUM(
-                CASE 
-                    WHEN r.opcao_id = e.opcao_correta_id THEN 1 
-                    ELSE 0 
-                END
-            ) AS acertos
+            COUNT(DISTINCT r.enquete_id) AS enquetes_respondidas,
+            COUNT(DISTINCT CASE
+                WHEN oc.opcao_id IS NOT NULL THEN r.enquete_id
+                ELSE NULL
+            END) AS acertos
         FROM public.enquete_respostas r
         INNER JOIN public.enquetes e
             ON e.id = r.enquete_id
         LEFT JOIN public.clientes c
             ON c.id = r.cliente_id
+        LEFT JOIN public.enquete_opcoes_corretas oc
+            ON oc.enquete_id = r.enquete_id
+            AND oc.opcao_id = r.opcao_id
         WHERE e.campanha_id = :campanha_id
-        AND e.opcao_correta_id IS NOT NULL
+        AND EXISTS (
+            SELECT 1
+            FROM public.enquete_opcoes_corretas oc2
+            WHERE oc2.enquete_id = e.id
+        )
         GROUP BY r.cliente_id, c.nome, c.usuario
         ORDER BY acertos DESC, c.nome ASC
     ");
@@ -78,6 +89,7 @@ try {
 
     foreach ($ranking as &$item) {
         $item['total_respostas'] = intval($item['total_respostas']);
+        $item['enquetes_respondidas'] = intval($item['enquetes_respondidas']);
         $item['acertos'] = intval($item['acertos']);
         $item['classificado_sorteio'] = $item['acertos'] >= intval($minimo_acertos);
     }

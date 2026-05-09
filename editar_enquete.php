@@ -2,7 +2,8 @@
 header("Content-Type: application/json");
 
 $id          = $_REQUEST['id'] ?? '';
-$pergunta    = $_REQUEST['pergunta'] ?? '';
+$pergunta    = trim($_REQUEST['pergunta'] ?? '');
+$subtitulo   = trim($_REQUEST['subtitulo'] ?? '');
 $max_opcoes  = $_REQUEST['max_opcoes'] ?? '';
 $ativa       = $_REQUEST['ativa'] ?? '';
 
@@ -27,7 +28,6 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
-
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
@@ -45,6 +45,12 @@ try {
     if ($pergunta !== '') {
         $campos[] = "pergunta = :pergunta";
         $params[':pergunta'] = $pergunta;
+    }
+
+    // permite salvar subtítulo vazio também
+    if (array_key_exists('subtitulo', $_REQUEST)) {
+        $campos[] = "subtitulo = :subtitulo";
+        $params[':subtitulo'] = $subtitulo;
     }
 
     if ($max_opcoes !== '') {
@@ -75,18 +81,21 @@ try {
         UPDATE public.enquetes
         SET " . implode(", ", $campos) . "
         WHERE id = :id
+        RETURNING id, pergunta, subtitulo, max_opcoes, ativa
     ";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
+    $enquete = $stmt->fetch(PDO::FETCH_ASSOC);
+
     echo json_encode([
         "success" => true,
-        "message" => "Enquete atualizada com sucesso"
+        "message" => "Enquete atualizada com sucesso",
+        "enquete" => $enquete
     ]);
 
 } catch (Exception $e) {
-
     echo json_encode([
         "success" => false,
         "message" => "Erro ao editar enquete",

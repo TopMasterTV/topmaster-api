@@ -3,6 +3,7 @@ header("Content-Type: application/json");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
 $pergunta = trim($_REQUEST['pergunta'] ?? '');
+$subtitulo = trim($_REQUEST['subtitulo'] ?? '');
 $max_opcoes = $_REQUEST['max_opcoes'] ?? '1';
 $opcoes_raw = $_REQUEST['opcoes'] ?? '';
 
@@ -37,19 +38,13 @@ try {
     );
 
     $opcoes_raw = trim($opcoes_raw);
-
-    // Remove formato de lista/JSON simples se vier assim:
-    // ["Brasil", "Marrocos", "Empate"]
     $opcoes_raw = str_replace(["[", "]", "\""], "", $opcoes_raw);
-
-    // Aceita vírgula OU quebra de linha
     $partes = preg_split('/[\r\n,]+/', $opcoes_raw);
 
     $opcoes = [];
 
     foreach ($partes as $opcao) {
         $opcao = trim($opcao);
-
         if ($opcao !== '') {
             $opcoes[] = $opcao;
         }
@@ -70,6 +65,7 @@ try {
         (
             campanha_id,
             pergunta,
+            subtitulo,
             max_opcoes,
             ativa
         )
@@ -77,6 +73,7 @@ try {
         (
             :campanha_id,
             :pergunta,
+            :subtitulo,
             :max_opcoes,
             true
         )
@@ -86,6 +83,7 @@ try {
     $stmt->execute([
         ':campanha_id' => $campanha_id,
         ':pergunta' => $pergunta,
+        ':subtitulo' => $subtitulo,
         ':max_opcoes' => intval($max_opcoes)
     ]);
 

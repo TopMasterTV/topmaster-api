@@ -135,17 +135,17 @@ try {
     foreach ($classificados as $classificado) {
 
         $stmtJaGanhou = $pdo->prepare("
-            SELECT id
-            FROM public.enquete_premios
-            WHERE campanha_id = :campanha_id
-            AND vencedor_cliente_id = :cliente_id
-            LIMIT 1
-        ");
+    SELECT id
+    FROM public.enquete_premios
+    WHERE campanha_id = :campanha_id
+    AND vencedor_participacao_id = :participacao_id
+    LIMIT 1
+");
 
-        $stmtJaGanhou->execute([
-            ':campanha_id' => $campanha_id,
-            ':cliente_id' => $classificado['cliente_id']
-        ]);
+$stmtJaGanhou->execute([
+    ':campanha_id' => $campanha_id,
+    ':participacao_id' => $classificado['participacao_id']
+]);
 
         $jaGanhou = $stmtJaGanhou->fetch(PDO::FETCH_ASSOC);
 

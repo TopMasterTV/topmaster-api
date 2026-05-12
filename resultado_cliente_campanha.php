@@ -151,18 +151,26 @@ try {
             return (int)$item['id'];
         }, $opcoes_corretas);
 
-        $respondeu = count($respostas_cliente) > 0;
+        $ids_respostas_cliente = array_map(function ($item) {
+            return (int)$item['opcao_id'];
+        }, $respostas_cliente);
+
+        $respondeu = count($ids_respostas_cliente) > 0;
         $acertou = false;
 
         if ($respondeu) {
             $total_respondidas++;
 
-            foreach ($respostas_cliente as $resposta) {
-                if (in_array((int)$resposta['opcao_id'], $ids_corretas)) {
-                    $acertou = true;
+            $temRespostaErrada = false;
+
+            foreach ($ids_respostas_cliente as $opcaoRespondida) {
+                if (!in_array($opcaoRespondida, $ids_corretas)) {
+                    $temRespostaErrada = true;
                     break;
                 }
             }
+
+            $acertou = !$temRespostaErrada;
 
             if ($acertou) {
                 $total_acertos++;

@@ -56,6 +56,7 @@ try {
         SELECT
             r.cliente_id,
             r.participacao_id,
+            p.codigo,
             c.nome,
             c.usuario,
             COUNT(*) AS total_respostas,
@@ -69,6 +70,8 @@ try {
             ON e.id = r.enquete_id
         LEFT JOIN public.clientes c
             ON c.id = r.cliente_id
+        LEFT JOIN public.enquete_participacoes p
+            ON p.id = r.participacao_id
         LEFT JOIN public.enquete_opcoes_corretas oc
             ON oc.enquete_id = r.enquete_id
             AND oc.opcao_id = r.opcao_id
@@ -78,8 +81,8 @@ try {
             FROM public.enquete_opcoes_corretas oc2
             WHERE oc2.enquete_id = e.id
         )
-        GROUP BY r.cliente_id, r.participacao_id, c.nome, c.usuario
-        ORDER BY acertos DESC, c.nome ASC, r.participacao_id ASC
+        GROUP BY r.cliente_id, r.participacao_id, p.codigo, c.nome, c.usuario
+        ORDER BY acertos DESC, c.nome ASC, p.codigo ASC
     ");
 
     $stmt->execute([
@@ -97,8 +100,10 @@ try {
         $item['cliente_id'] = intval($item['cliente_id']);
         $item['participacao_id'] = $item['participacao_id'] !== null ? intval($item['participacao_id']) : null;
 
-        $item['codigo_texto'] = $item['participacao_id'] !== null
-            ? "Código #" . $item['participacao_id']
+        $codigoReal = $item['codigo'] ?? '';
+
+        $item['codigo_texto'] = $codigoReal !== ''
+            ? "Código " . $codigoReal
             : "Participação livre";
 
         $item['total_respostas'] = intval($item['total_respostas']);

@@ -55,6 +55,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT
             r.cliente_id,
+            r.participacao_id,
             c.nome,
             c.usuario,
             COUNT(*) AS total_respostas,
@@ -77,8 +78,8 @@ try {
             FROM public.enquete_opcoes_corretas oc2
             WHERE oc2.enquete_id = e.id
         )
-        GROUP BY r.cliente_id, c.nome, c.usuario
-        ORDER BY acertos DESC, c.nome ASC
+        GROUP BY r.cliente_id, r.participacao_id, c.nome, c.usuario
+        ORDER BY acertos DESC, c.nome ASC, r.participacao_id ASC
     ");
 
     $stmt->execute([
@@ -87,11 +88,25 @@ try {
 
     $ranking = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $posicao = 1;
+
     foreach ($ranking as &$item) {
+        $item['posicao'] = $posicao;
+        $item['posicao_texto'] = $posicao . "º";
+
+        $item['cliente_id'] = intval($item['cliente_id']);
+        $item['participacao_id'] = $item['participacao_id'] !== null ? intval($item['participacao_id']) : null;
+
+        $item['codigo_texto'] = $item['participacao_id'] !== null
+            ? "Código #" . $item['participacao_id']
+            : "Participação livre";
+
         $item['total_respostas'] = intval($item['total_respostas']);
         $item['enquetes_respondidas'] = intval($item['enquetes_respondidas']);
         $item['acertos'] = intval($item['acertos']);
         $item['classificado_sorteio'] = $item['acertos'] >= intval($minimo_acertos);
+
+        $posicao++;
     }
 
     echo json_encode([

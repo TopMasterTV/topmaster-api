@@ -9,6 +9,9 @@ $encerra_em = $_REQUEST['encerra_em'] ?? '';
 $ativa = $_REQUEST['ativa'] ?? '';
 $modo_participacao = $_REQUEST['modo_participacao'] ?? '';
 
+$tipo_classificacao = $_REQUEST['tipo_classificacao'] ?? '';
+$minimo_acertos = $_REQUEST['minimo_acertos'] ?? '';
+
 $resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
 $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
 $resultado_link = $_REQUEST['resultado_link'] ?? '';
@@ -32,6 +35,18 @@ if (
     echo json_encode([
         "success" => false,
         "message" => "modo_participacao inválido"
+    ]);
+    exit;
+}
+
+if (
+    $tipo_classificacao !== '' &&
+    $tipo_classificacao !== 'minimo_acertos' &&
+    $tipo_classificacao !== 'todos'
+) {
+    echo json_encode([
+        "success" => false,
+        "message" => "tipo_classificacao inválido"
     ]);
     exit;
 }
@@ -88,6 +103,27 @@ try {
     if ($modo_participacao !== '') {
         $campos[] = "modo_participacao = :modo_participacao";
         $params[':modo_participacao'] = $modo_participacao;
+    }
+
+    if ($tipo_classificacao !== '') {
+        $campos[] = "tipo_classificacao = :tipo_classificacao";
+        $params[':tipo_classificacao'] = $tipo_classificacao;
+
+        if ($tipo_classificacao === 'todos') {
+            $campos[] = "minimo_acertos = :minimo_acertos";
+            $params[':minimo_acertos'] = 0;
+        }
+    }
+
+    if ($minimo_acertos !== '' && $tipo_classificacao !== 'todos') {
+        $minimo = intval($minimo_acertos);
+
+        if ($minimo < 1) {
+            $minimo = 1;
+        }
+
+        $campos[] = "minimo_acertos = :minimo_acertos";
+        $params[':minimo_acertos'] = $minimo;
     }
 
     if ($resultado_titulo !== '') {

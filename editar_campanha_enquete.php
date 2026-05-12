@@ -14,6 +14,8 @@ $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
 $resultado_link = $_REQUEST['resultado_link'] ?? '';
 $resultado_publicado = $_REQUEST['resultado_publicado'] ?? '';
 
+$video_sorteio_url = $_REQUEST['video_sorteio_url'] ?? '';
+
 if ($id === '') {
     echo json_encode([
         "success" => false,
@@ -110,6 +112,11 @@ try {
             strtolower($resultado_publicado) === 'true' ||
             strtolower($resultado_publicado) === 'sim'
         );
+    }
+
+    if ($video_sorteio_url !== '') {
+        $campos[] = "video_sorteio_url = :video_sorteio_url";
+        $params[':video_sorteio_url'] = $video_sorteio_url;
     }
 
     if (count($campos) === 0) {

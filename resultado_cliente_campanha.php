@@ -36,7 +36,6 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    // CAMPANHA
     $stmtCampanha = $pdo->prepare("
         SELECT
             id,
@@ -65,7 +64,6 @@ try {
         exit;
     }
 
-    // ENQUETES DA CAMPANHA
     $stmtEnquetes = $pdo->prepare("
         SELECT
             id,
@@ -91,9 +89,8 @@ try {
     foreach ($enquetes as $enquete) {
         $enquete_id = $enquete['id'];
 
-        // RESPOSTA DO CLIENTE
         if ($participacao_id !== '') {
-            $stmtResposta = $pdo->prepare("
+            $stmtRespostas = $pdo->prepare("
                 SELECT
                     er.opcao_id,
                     o.texto
@@ -103,16 +100,16 @@ try {
                 WHERE er.enquete_id = :enquete_id
                 AND er.cliente_id = :cliente_id
                 AND er.participacao_id = :participacao_id
-                LIMIT 1
+                ORDER BY er.opcao_id ASC
             ");
 
-            $stmtResposta->execute([
+            $stmtRespostas->execute([
                 ':enquete_id' => $enquete_id,
                 ':cliente_id' => $cliente_id,
                 ':participacao_id' => $participacao_id
             ]);
         } else {
-            $stmtResposta = $pdo->prepare("
+            $stmtRespostas = $pdo->prepare("
                 SELECT
                     er.opcao_id,
                     o.texto
@@ -122,18 +119,17 @@ try {
                 WHERE er.enquete_id = :enquete_id
                 AND er.cliente_id = :cliente_id
                 AND er.participacao_id IS NULL
-                LIMIT 1
+                ORDER BY er.opcao_id ASC
             ");
 
-            $stmtResposta->execute([
+            $stmtRespostas->execute([
                 ':enquete_id' => $enquete_id,
                 ':cliente_id' => $cliente_id
             ]);
         }
 
-        $resposta = $stmtResposta->fetch(PDO::FETCH_ASSOC);
+        $respostas_cliente = $stmtRespostas->fetchAll(PDO::FETCH_ASSOC);
 
-        // OPÇÕES CORRETAS
         $stmtCorretas = $pdo->prepare("
             SELECT
                 oc.opcao_id AS id,
@@ -151,14 +147,18 @@ try {
 
         $opcoes_corretas = $stmtCorretas->fetchAll(PDO::FETCH_ASSOC);
 
-        $respondeu = $resposta ? true : false;
+        $ids_corretas = array_map(function ($item) {
+            return (int)$item['id'];
+        }, $opcoes_corretas);
+
+        $respondeu = count($respostas_cliente) > 0;
         $acertou = false;
 
         if ($respondeu) {
             $total_respondidas++;
 
-            foreach ($opcoes_corretas as $correta) {
-                if ((int)$correta['id'] === (int)$resposta['opcao_id']) {
+            foreach ($respostas_cliente as $resposta) {
+                if (in_array((int)$resposta['opcao_id'], $ids_corretas)) {
                     $acertou = true;
                     break;
                 }
@@ -176,16 +176,28 @@ try {
             "pergunta" => $enquete['pergunta'],
             "respondeu" => $respondeu,
             "acertou" => $acertou,
-            "resposta_cliente" => $resposta ? [
-                "opcao_id" => (int)$resposta['opcao_id'],
-                "texto" => $resposta['texto']
-            ] : null,
+
+            "respostas_cliente" => array_map(function ($item) {
+                return [
+                    "opcao_id" => (int)$item['opcao_id'],
+                    "texto" => $item['texto']
+                ];
+            }, $respostas_cliente),
+
+            "resposta_cliente_texto" => implode(", ", array_map(function ($item) {
+                return $item['texto'];
+            }, $respostas_cliente)),
+
             "opcoes_corretas" => array_map(function ($item) {
                 return [
                     "id" => (int)$item['id'],
                     "texto" => $item['texto']
                 ];
-            }, $opcoes_corretas)
+            }, $opcoes_corretas),
+
+            "opcoes_corretas_texto" => implode(", ", array_map(function ($item) {
+                return $item['texto'];
+            }, $opcoes_corretas))
         ];
     }
 

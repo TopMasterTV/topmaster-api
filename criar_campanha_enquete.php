@@ -7,6 +7,9 @@ $encerra_em = $_REQUEST['encerra_em'] ?? '';
 
 $modo_participacao = $_REQUEST['modo_participacao'] ?? 'codigo';
 
+$tipo_classificacao = $_REQUEST['tipo_classificacao'] ?? 'minimo_acertos';
+$minimo_acertos = $_REQUEST['minimo_acertos'] ?? 6;
+
 $resultado_titulo = $_REQUEST['resultado_titulo'] ?? '';
 $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
 $resultado_link = $_REQUEST['resultado_link'] ?? '';
@@ -26,6 +29,26 @@ if ($modo_participacao !== 'codigo' && $modo_participacao !== 'livre') {
         "message" => "modo_participacao inválido"
     ]);
     exit;
+}
+
+if (
+    $tipo_classificacao !== 'minimo_acertos' &&
+    $tipo_classificacao !== 'todos'
+) {
+    echo json_encode([
+        "success" => false,
+        "message" => "tipo_classificacao inválido"
+    ]);
+    exit;
+}
+
+if ($tipo_classificacao === 'todos') {
+    $minimo_acertos = 0;
+} else {
+    $minimo_acertos = intval($minimo_acertos);
+    if ($minimo_acertos < 1) {
+        $minimo_acertos = 1;
+    }
 }
 
 $DATABASE_URL = getenv("DATABASE_URL");
@@ -62,6 +85,8 @@ try {
             descricao,
             encerra_em,
             modo_participacao,
+            tipo_classificacao,
+            minimo_acertos,
             resultado_titulo,
             resultado_descricao,
             resultado_link,
@@ -73,6 +98,8 @@ try {
             :descricao,
             :encerra_em,
             :modo_participacao,
+            :tipo_classificacao,
+            :minimo_acertos,
             :resultado_titulo,
             :resultado_descricao,
             :resultado_link,
@@ -86,6 +113,8 @@ try {
         ':descricao' => $descricao,
         ':encerra_em' => $encerra_em,
         ':modo_participacao' => $modo_participacao,
+        ':tipo_classificacao' => $tipo_classificacao,
+        ':minimo_acertos' => $minimo_acertos,
         ':resultado_titulo' => $resultado_titulo,
         ':resultado_descricao' => $resultado_descricao,
         ':resultado_link' => $resultado_link,

@@ -35,10 +35,14 @@ try {
     );
 
     $stmt = $pdo->prepare("
-        SELECT *
-        FROM public.enquete_premios
-        WHERE campanha_id = :campanha_id
-        ORDER BY ordem ASC, id ASC
+        SELECT
+            p.*,
+            ep.codigo AS vencedor_codigo
+        FROM public.enquete_premios p
+        LEFT JOIN public.enquete_participacoes ep
+            ON ep.id = p.vencedor_participacao_id
+        WHERE p.campanha_id = :campanha_id
+        ORDER BY p.ordem ASC, p.id ASC
     ");
 
     $stmt->execute([
@@ -46,6 +50,13 @@ try {
     ]);
 
     $premios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($premios as &$premio) {
+        $premio['vencedor_codigo_texto'] =
+            !empty($premio['vencedor_codigo'])
+                ? "Código " . $premio['vencedor_codigo']
+                : "";
+    }
 
     echo json_encode([
         "success" => true,

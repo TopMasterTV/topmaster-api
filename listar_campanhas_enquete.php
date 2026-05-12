@@ -53,7 +53,6 @@ try {
                 campanha_id
             FROM public.enquetes
             WHERE campanha_id = :campanha_id
-            AND ativa = true
             ORDER BY id ASC
         ");
 

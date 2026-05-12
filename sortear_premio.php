@@ -26,6 +26,7 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
+
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
@@ -35,6 +36,7 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    // BUSCA PRÊMIO
     $stmtPremio = $pdo->prepare("
         SELECT *
         FROM public.enquete_premios
@@ -56,64 +58,82 @@ try {
         exit;
     }
 
+    // VERIFICA SE JÁ TEM VENCEDOR
     if (!empty($premio['vencedor_cliente_id'])) {
+
         echo json_encode([
             "success" => false,
-            "message" => "Este prêmio já possui vencedor",
-            "premio" => $premio
+            "message" => "Este prêmio já possui vencedor"
         ]);
+
         exit;
     }
 
     $campanha_id = $premio['campanha_id'];
 
-    $stmtClassificados = $pdo->prepare("
+    // BUSCA CLASSIFICADOS
+    $stmtRanking = $pdo->prepare("
         SELECT
             r.cliente_id,
+            r.participacao_id,
             c.nome,
             c.usuario,
-            COUNT(*) AS total_respostas,
-            SUM(
-                CASE
-                    WHEN r.opcao_id = e.opcao_correta_id THEN 1
-                    ELSE 0
-                END
-            ) AS acertos
+
+            COUNT(DISTINCT CASE
+                WHEN oc.opcao_id IS NOT NULL
+                THEN r.enquete_id
+            END) AS acertos,
+
+            COUNT(*) AS total_respostas
+
         FROM public.enquete_respostas r
+
         INNER JOIN public.enquetes e
             ON e.id = r.enquete_id
+
         LEFT JOIN public.clientes c
             ON c.id = r.cliente_id
+
+        LEFT JOIN public.enquete_opcoes_corretas oc
+            ON oc.enquete_id = r.enquete_id
+            AND oc.opcao_id = r.opcao_id
+
         WHERE e.campanha_id = :campanha_id
-        AND e.opcao_correta_id IS NOT NULL
-        GROUP BY r.cliente_id, c.nome, c.usuario
-        HAVING SUM(
-            CASE
-                WHEN r.opcao_id = e.opcao_correta_id THEN 1
-                ELSE 0
-            END
-        ) >= :minimo_acertos
-        ORDER BY RANDOM()
+
+        GROUP BY
+            r.cliente_id,
+            r.participacao_id,
+            c.nome,
+            c.usuario
+
+        HAVING COUNT(DISTINCT CASE
+            WHEN oc.opcao_id IS NOT NULL
+            THEN r.enquete_id
+        END) >= :minimo_acertos
     ");
 
-    $stmtClassificados->execute([
+    $stmtRanking->execute([
         ':campanha_id' => $campanha_id,
         ':minimo_acertos' => intval($minimo_acertos)
     ]);
 
-    $classificados = $stmtClassificados->fetchAll(PDO::FETCH_ASSOC);
+    $classificados = $stmtRanking->fetchAll(PDO::FETCH_ASSOC);
 
     if (count($classificados) === 0) {
+
         echo json_encode([
             "success" => false,
-            "message" => "Nenhum classificado disponível para este prêmio"
+            "message" => "Nenhum classificado disponível"
         ]);
+
         exit;
     }
 
+    // REMOVE QUEM JÁ GANHOU
     $disponiveis = [];
 
     foreach ($classificados as $classificado) {
+
         $stmtJaGanhou = $pdo->prepare("
             SELECT id
             FROM public.enquete_premios
@@ -135,28 +155,35 @@ try {
     }
 
     if (count($disponiveis) === 0) {
+
         echo json_encode([
             "success" => false,
-            "message" => "Todos os classificados já ganharam algum prêmio"
+            "message" => "Todos os classificados já ganharam"
         ]);
+
         exit;
     }
 
+    // SORTEIA
     shuffle($disponiveis);
+
     $vencedor = $disponiveis[0];
 
+    // SALVA VENCEDOR
     $stmtUpdate = $pdo->prepare("
         UPDATE public.enquete_premios
         SET
-            vencedor_cliente_id = :vencedor_cliente_id,
-            vencedor_nome = :vencedor_nome
+            vencedor_cliente_id = :cliente_id,
+            vencedor_nome = :nome,
+            vencedor_participacao_id = :participacao_id
         WHERE id = :premio_id
         RETURNING *
     ");
 
     $stmtUpdate->execute([
-        ':vencedor_cliente_id' => $vencedor['cliente_id'],
-        ':vencedor_nome' => $vencedor['nome'],
+        ':cliente_id' => $vencedor['cliente_id'],
+        ':nome' => $vencedor['nome'],
+        ':participacao_id' => $vencedor['participacao_id'],
         ':premio_id' => $premio_id
     ]);
 
@@ -165,9 +192,12 @@ try {
     echo json_encode([
         "success" => true,
         "message" => "Prêmio sorteado com sucesso",
+
         "premio" => $premioAtualizado,
+
         "vencedor" => [
             "cliente_id" => intval($vencedor['cliente_id']),
+            "participacao_id" => intval($vencedor['participacao_id']),
             "nome" => $vencedor['nome'],
             "usuario" => $vencedor['usuario'],
             "acertos" => intval($vencedor['acertos']),
@@ -176,6 +206,7 @@ try {
     ]);
 
 } catch (Exception $e) {
+
     echo json_encode([
         "success" => false,
         "message" => "Erro ao sortear prêmio",

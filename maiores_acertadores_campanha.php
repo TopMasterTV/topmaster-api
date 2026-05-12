@@ -3,7 +3,6 @@ header("Content-Type: application/json");
 date_default_timezone_set("America/Sao_Paulo");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
-$minimo_acertos = $_REQUEST['minimo_acertos'] ?? 6;
 
 if ($campanha_id === '') {
     echo json_encode([
@@ -35,6 +34,33 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    $stmtCampanha = $pdo->prepare("
+        SELECT
+            id,
+            tipo_classificacao,
+            minimo_acertos
+        FROM public.enquete_campanhas
+        WHERE id = :campanha_id
+        LIMIT 1
+    ");
+
+    $stmtCampanha->execute([
+        ':campanha_id' => $campanha_id
+    ]);
+
+    $campanha = $stmtCampanha->fetch(PDO::FETCH_ASSOC);
+
+    if (!$campanha) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Campanha não encontrada"
+        ]);
+        exit;
+    }
+
+    $tipoClassificacao = $campanha['tipo_classificacao'] ?? 'minimo_acertos';
+    $minimoAcertos = intval($campanha['minimo_acertos'] ?? 6);
+
     $stmtTotal = $pdo->prepare("
         SELECT COUNT(*) AS total_enquetes
         FROM public.enquetes e
@@ -51,6 +77,10 @@ try {
     ]);
 
     $totalEnquetes = intval($stmtTotal->fetch(PDO::FETCH_ASSOC)['total_enquetes'] ?? 0);
+
+    if ($tipoClassificacao === 'todos') {
+        $minimoAcertos = $totalEnquetes;
+    }
 
     $stmt = $pdo->prepare("
         WITH respostas_por_enquete AS (
@@ -143,7 +173,7 @@ try {
         $item['total_respostas'] = intval($item['total_respostas']);
         $item['enquetes_respondidas'] = intval($item['enquetes_respondidas']);
         $item['acertos'] = intval($item['acertos']);
-        $item['classificado_sorteio'] = $item['acertos'] >= intval($minimo_acertos);
+        $item['classificado_sorteio'] = $item['acertos'] >= $minimoAcertos;
 
         $posicao++;
     }
@@ -151,8 +181,9 @@ try {
     echo json_encode([
         "success" => true,
         "campanha_id" => intval($campanha_id),
+        "tipo_classificacao" => $tipoClassificacao,
         "total_enquetes" => $totalEnquetes,
-        "minimo_acertos" => intval($minimo_acertos),
+        "minimo_acertos" => $minimoAcertos,
         "ranking" => $ranking
     ]);
 

@@ -36,7 +36,7 @@ try {
             vencimento
         FROM public.sistemas
         ORDER BY id ASC
-        LIMIT 20
+        LIMIT 500
     ");
 
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -42,29 +42,19 @@ try {
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $total = count($sistemas);
-
     $atualizados = 0;
     $sem_exp_date = 0;
     $falhas = 0;
-
     $detalhes = [];
 
     foreach ($sistemas as $sistema) {
 
         $id = $sistema['id'];
-
         $url = rtrim(trim($sistema['url'] ?? ''), '/');
-
         $usuario = trim($sistema['usuario'] ?? '');
-
         $senha = trim($sistema['senha'] ?? '');
 
-        if (
-            $url === '' ||
-            $usuario === '' ||
-            $senha === ''
-        ) {
-
+        if ($url === '' || $usuario === '' || $senha === '') {
             $falhas++;
 
             $detalhes[] = [
@@ -78,12 +68,7 @@ try {
             continue;
         }
 
-        $apiUrl =
-            $url .
-            "/player_api.php?username=" .
-            urlencode($usuario) .
-            "&password=" .
-            urlencode($senha);
+        $apiUrl = $url . "/player_api.php?username=" . urlencode($usuario) . "&password=" . urlencode($senha);
 
         $context = stream_context_create([
             "http" => [
@@ -93,17 +78,9 @@ try {
             ]
         ]);
 
-        $resposta = @file_get_contents(
-            $apiUrl,
-            false,
-            $context
-        );
+        $resposta = @file_get_contents($apiUrl, false, $context);
 
-        if (
-            $resposta === false ||
-            trim($resposta) === ''
-        ) {
-
+        if ($resposta === false || trim($resposta) === '') {
             $falhas++;
 
             $detalhes[] = [
@@ -119,11 +96,7 @@ try {
 
         $json = json_decode($resposta, true);
 
-        if (
-            !is_array($json) ||
-            !isset($json['user_info'])
-        ) {
-
+        if (!is_array($json) || !isset($json['user_info'])) {
             $falhas++;
 
             $detalhes[] = [
@@ -138,19 +111,10 @@ try {
         }
 
         $userInfo = $json['user_info'];
+        $statusXtream = $userInfo['status'] ?? '';
+        $expDate = $userInfo['exp_date'] ?? '';
 
-        $statusXtream =
-            $userInfo['status'] ?? '';
-
-        $expDate =
-            $userInfo['exp_date'] ?? '';
-
-        if (
-            $expDate === '' ||
-            $expDate === null ||
-            $expDate === '0'
-        ) {
-
+        if ($expDate === '' || $expDate === null || $expDate === '0') {
             $sem_exp_date++;
 
             $detalhes[] = [
@@ -164,10 +128,7 @@ try {
             continue;
         }
 
-        $novoVencimento = date(
-            "Y-m-d",
-            intval($expDate)
-        );
+        $novoVencimento = date("Y-m-d", intval($expDate));
 
         $stmtUpdate = $pdo->prepare("
             UPDATE public.sistemas
@@ -193,6 +154,16 @@ try {
         ];
     }
 
+    $pdo->exec("
+        UPDATE public.clientes c
+        SET ativo = EXISTS (
+            SELECT 1
+            FROM public.sistemas s
+            WHERE s.cliente_id = c.id
+            AND s.vencimento >= CURRENT_DATE
+        )
+    ");
+
     echo json_encode([
         "success" => true,
         "message" => "Atualização concluída",
@@ -200,6 +171,7 @@ try {
         "atualizados" => $atualizados,
         "sem_exp_date" => $sem_exp_date,
         "falhas" => $falhas,
+        "clientes_sincronizados" => true,
         "detalhes" => $detalhes
     ]);
 

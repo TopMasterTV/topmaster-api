@@ -26,16 +26,24 @@ if (!$DATABASE_URL) {
 $db = parse_url($DATABASE_URL);
 
 try {
+
     $pdo = new PDO(
         "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
         ";dbname=" . ltrim($db['path'], '/') .
         ";sslmode=require",
         $db['user'],
         $db['pass'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+        ]
     );
 
+    // =========================
+    // BUSCA SISTEMAS
+    // =========================
+
     if ($cliente_id !== '') {
+
         $stmt = $pdo->prepare("
             SELECT *
             FROM public.sistemas
@@ -46,7 +54,9 @@ try {
         $stmt->execute([
             ':cliente_id' => $cliente_id
         ]);
+
     } else {
+
         $stmt = $pdo->prepare("
             SELECT *
             FROM public.sistemas
@@ -61,21 +71,30 @@ try {
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $total = count($sistemas);
+
     $atualizados = 0;
     $falhas = 0;
+
     $detalhes = [];
 
+    // =========================
+    // LOOP SISTEMAS
+    // =========================
+
     foreach ($sistemas as $s) {
+
         $id = $s['id'];
+
         $url = rtrim(trim($s['url'] ?? ''), '/');
-        $user = trim($s['usuario'] ?? '');
-        $pass = trim($s['senha'] ?? '');
+        $usuario = trim($s['usuario'] ?? '');
+        $senha = trim($s['senha'] ?? '');
 
-        $status = null;
-        $exp_date = null;
-        $vencimento = null;
+        if (
+            $url === '' ||
+            $usuario === '' ||
+            $senha === ''
+        ) {
 
-        if ($url === '' || $user === '' || $pass === '') {
             $falhas++;
 
             $detalhes[] = [
@@ -83,42 +102,116 @@ try {
                 "cliente_id" => (int)$s['cliente_id'],
                 "nome_sistema" => $s['nome_sistema'] ?? '',
                 "status" => "falha",
-                "motivo" => "url, usuário ou senha vazio"
+                "motivo" => "url, usuario ou senha vazio"
             ];
 
             continue;
         }
 
-        $apiUrl = $url . "/player_api.php?username=" . urlencode($user) . "&password=" . urlencode($pass);
+        $apiUrl =
+            $url .
+            "/player_api.php?username=" .
+            urlencode($usuario) .
+            "&password=" .
+            urlencode($senha);
 
-        $response = @file_get_contents($apiUrl);
+        $status = null;
+        $exp_date = null;
+        $vencimento = null;
 
-        if ($response) {
-            $data = json_decode($response, true);
+        // =========================
+        // XTREAM API
+        // =========================
 
-            if (isset($data['user_info'])) {
-                $status = $data['user_info']['status'] ?? null;
-                $exp_date = $data['user_info']['exp_date'] ?? null;
+        try {
 
-                if ($exp_date) {
-                    $vencimento = date("Y-m-d", intval($exp_date));
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15,
+                    'ignore_errors' => true,
+                    'header' => "User-Agent: Mozilla/5.0\r\n"
+                ]
+            ]);
+
+            $response = @file_get_contents(
+                $apiUrl,
+                false,
+                $context
+            );
+
+            if ($response) {
+
+                $data = json_decode($response, true);
+
+                if (
+                    is_array($data) &&
+                    isset($data['user_info'])
+                ) {
+
+                    $status =
+                        $data['user_info']['status'] ?? null;
+
+                    $exp_date =
+                        $data['user_info']['exp_date'] ?? null;
+
+                    if (
+                        $exp_date &&
+                        is_numeric($exp_date)
+                    ) {
+
+                        $vencimento = date(
+                            'Y-m-d',
+                            intval($exp_date)
+                        );
+                    }
                 }
             }
+
+        } catch (Exception $e) {
         }
+
+        // =========================
+        // FALLBACK M3U
+        // =========================
 
         if (!$status) {
-            if (!empty($s['m3u_url'])) {
-                $m3u = @file_get_contents($s['m3u_url']);
 
-                if ($m3u && strpos($m3u, "#EXTM3U") !== false) {
-                    $status = "Active";
+            try {
+
+                if (!empty($s['m3u_url'])) {
+
+                    $m3u = @file_get_contents(
+                        $s['m3u_url']
+                    );
+
+                    if (
+                        $m3u &&
+                        strpos($m3u, "#EXTM3U") !== false
+                    ) {
+
+                        $status = "Active";
+                    }
                 }
+
+            } catch (Exception $e) {
             }
         }
 
-        if (!$vencimento && !empty($s['vencimento'])) {
+        // =========================
+        // MANTÉM VENCIMENTO ANTIGO
+        // =========================
+
+        if (
+            !$vencimento &&
+            !empty($s['vencimento'])
+        ) {
+
             $vencimento = $s['vencimento'];
         }
+
+        // =========================
+        // UPDATE SISTEMA
+        // =========================
 
         $update = $pdo->prepare("
             UPDATE public.sistemas
@@ -145,10 +238,15 @@ try {
             "status" => "atualizado",
             "status_xtream" => $status,
             "exp_date" => $exp_date,
-            "vencimento_antigo" => $s['vencimento'] ?? null,
+            "vencimento_antigo" =>
+                $s['vencimento'] ?? null,
             "vencimento_novo" => $vencimento
         ];
     }
+
+    // =========================
+    // SINCRONIZA CLIENTES
+    // =========================
 
     $pdo->exec("
         UPDATE public.clientes c
@@ -165,8 +263,12 @@ try {
 
     echo json_encode([
         "success" => true,
-        "message" => "Sistemas atualizados e clientes sincronizados corretamente",
-        "cliente_id" => $cliente_id !== '' ? intval($cliente_id) : null,
+        "message" =>
+            "Sistemas atualizados e clientes sincronizados",
+        "cliente_id" =>
+            $cliente_id !== ''
+                ? intval($cliente_id)
+                : null,
         "total_sistemas" => $total,
         "atualizados" => $atualizados,
         "falhas" => $falhas,
@@ -175,6 +277,7 @@ try {
     ]);
 
 } catch (Exception $e) {
+
     echo json_encode([
         "success" => false,
         "message" => "Erro ao atualizar sistemas",

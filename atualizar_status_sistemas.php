@@ -18,6 +18,57 @@ if (!$DATABASE_URL) {
     exit;
 }
 
+function consultarXtream($apiUrl) {
+    $ultimaResposta = false;
+    $ultimoErro = '';
+    $ultimoHttpCode = 0;
+
+    for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
+        $ch = curl_init();
+
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $apiUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_USERAGENT => "TOPMASTER-TV",
+        ]);
+
+        $resposta = curl_exec($ch);
+        $erro = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        curl_close($ch);
+
+        $ultimaResposta = $resposta;
+        $ultimoErro = $erro;
+        $ultimoHttpCode = $httpCode;
+
+        if ($resposta !== false && trim($resposta) !== '' && $httpCode !== 503) {
+            return [
+                "success" => true,
+                "resposta" => $resposta,
+                "http_code" => $httpCode,
+                "curl_error" => $erro,
+                "tentativas" => $tentativa
+            ];
+        }
+
+        usleep(500000);
+    }
+
+    return [
+        "success" => false,
+        "resposta" => $ultimaResposta,
+        "http_code" => $ultimoHttpCode,
+        "curl_error" => $ultimoErro,
+        "tentativas" => 3
+    ];
+}
+
 $db = parse_url($DATABASE_URL);
 
 try {
@@ -81,26 +132,9 @@ try {
 
         $apiUrl = $url . "/player_api.php?username=" . urlencode($usuario) . "&password=" . urlencode($senha);
 
-        $ch = curl_init();
+        $consulta = consultarXtream($apiUrl);
 
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $apiUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_TIMEOUT => 6,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_USERAGENT => "TOPMASTER-TV"
-        ]);
-
-        $resposta = curl_exec($ch);
-        $curlErro = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-
-        if ($resposta === false || trim($resposta) === '') {
+        if (!$consulta["success"] || $consulta["resposta"] === false || trim($consulta["resposta"]) === '') {
             $falhas++;
             $detalhes[] = [
                 "id" => (int)$id,
@@ -108,12 +142,14 @@ try {
                 "nome_sistema" => $sistema['nome_sistema'],
                 "status" => "falha",
                 "motivo" => "sem resposta da Xtream",
-                "http_code" => $httpCode,
-                "curl_error" => $curlErro
+                "http_code" => $consulta["http_code"],
+                "curl_error" => $consulta["curl_error"],
+                "tentativas" => $consulta["tentativas"]
             ];
             continue;
         }
 
+        $resposta = $consulta["resposta"];
         $json = json_decode($resposta, true);
 
         if (!is_array($json) || !isset($json['user_info'])) {
@@ -124,7 +160,8 @@ try {
                 "nome_sistema" => $sistema['nome_sistema'],
                 "status" => "falha",
                 "motivo" => "resposta inválida da Xtream",
-                "http_code" => $httpCode,
+                "http_code" => $consulta["http_code"],
+                "tentativas" => $consulta["tentativas"],
                 "resposta_inicio" => substr($resposta, 0, 120)
             ];
             continue;
@@ -144,7 +181,8 @@ try {
                 "nome_sistema" => $sistema['nome_sistema'],
                 "status" => $statusXtream,
                 "motivo" => "sem exp_date",
-                "exp_date_raw" => $expDateRaw
+                "exp_date_raw" => $expDateRaw,
+                "tentativas" => $consulta["tentativas"]
             ];
             continue;
         }
@@ -172,7 +210,8 @@ try {
             "status_xtream" => $statusXtream,
             "exp_date_raw" => $expDateRaw,
             "vencimento_antigo" => $sistema['vencimento'],
-            "vencimento_novo" => $novoVencimento
+            "vencimento_novo" => $novoVencimento,
+            "tentativas" => $consulta["tentativas"]
         ];
     }
 

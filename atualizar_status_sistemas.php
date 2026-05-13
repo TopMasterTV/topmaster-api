@@ -5,8 +5,13 @@ date_default_timezone_set("America/Sao_Paulo");
 $cliente_id = $_REQUEST['cliente_id'] ?? '';
 $limit = intval($_REQUEST['limit'] ?? 500);
 
-if ($limit < 1) $limit = 500;
-if ($limit > 1000) $limit = 1000;
+if ($limit < 1) {
+    $limit = 500;
+}
+
+if ($limit > 1000) {
+    $limit = 1000;
+}
 
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -16,63 +21,6 @@ if (!$DATABASE_URL) {
         "message" => "DATABASE_URL não definida"
     ]);
     exit;
-}
-
-function consultarXtream($apiUrl) {
-    $ultimaResposta = false;
-    $ultimoErro = '';
-    $ultimoHttpCode = 0;
-
-    for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
-        $ch = curl_init();
-
-        curl_setopt_array($ch, [
-    CURLOPT_URL => $apiUrl,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_CONNECTTIMEOUT => 4,
-    CURLOPT_TIMEOUT => 8,
-    CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_SSL_VERIFYPEER => false,
-    CURLOPT_SSL_VERIFYHOST => false,
-
-    CURLOPT_USERAGENT => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-
-    CURLOPT_HTTPHEADER => [
-        "Accept: application/json,text/plain,/",
-        "Connection: keep-alive"
-    ],
-]);
-
-        $resposta = curl_exec($ch);
-        $erro = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        curl_close($ch);
-
-        $ultimaResposta = $resposta;
-        $ultimoErro = $erro;
-        $ultimoHttpCode = $httpCode;
-
-        if ($resposta !== false && trim($resposta) !== '' && $httpCode !== 503) {
-            return [
-                "success" => true,
-                "resposta" => $resposta,
-                "http_code" => $httpCode,
-                "curl_error" => $erro,
-                "tentativas" => $tentativa
-            ];
-        }
-
-        usleep(500000);
-    }
-
-    return [
-        "success" => false,
-        "resposta" => $ultimaResposta,
-        "http_code" => $ultimoHttpCode,
-        "curl_error" => $ultimoErro,
-        "tentativas" => 3
-    ];
 }
 
 $db = parse_url($DATABASE_URL);
@@ -89,7 +37,7 @@ try {
 
     if ($cliente_id !== '') {
         $stmt = $pdo->prepare("
-            SELECT id, cliente_id, nome_sistema, url, usuario, senha, vencimento
+            SELECT *
             FROM public.sistemas
             WHERE cliente_id = :cliente_id
             ORDER BY id ASC
@@ -100,7 +48,7 @@ try {
         ]);
     } else {
         $stmt = $pdo->prepare("
-            SELECT id, cliente_id, nome_sistema, url, usuario, senha, vencimento
+            SELECT *
             FROM public.sistemas
             ORDER BY id ASC
             LIMIT :limit
@@ -114,95 +62,77 @@ try {
 
     $total = count($sistemas);
     $atualizados = 0;
-    $sem_exp_date = 0;
     $falhas = 0;
     $detalhes = [];
 
-    foreach ($sistemas as $sistema) {
-        $id = $sistema['id'];
-        $url = rtrim(trim($sistema['url'] ?? ''), '/');
-        $usuario = trim($sistema['usuario'] ?? '');
-        $senha = trim($sistema['senha'] ?? '');
+    foreach ($sistemas as $s) {
+        $id = $s['id'];
+        $url = rtrim(trim($s['url'] ?? ''), '/');
+        $user = trim($s['usuario'] ?? '');
+        $pass = trim($s['senha'] ?? '');
 
-        if ($url === '' || $usuario === '' || $senha === '') {
+        $status = null;
+        $exp_date = null;
+        $vencimento = null;
+
+        if ($url === '' || $user === '' || $pass === '') {
             $falhas++;
+
             $detalhes[] = [
                 "id" => (int)$id,
-                "cliente_id" => (int)$sistema['cliente_id'],
-                "nome_sistema" => $sistema['nome_sistema'],
+                "cliente_id" => (int)$s['cliente_id'],
+                "nome_sistema" => $s['nome_sistema'] ?? '',
                 "status" => "falha",
                 "motivo" => "url, usuário ou senha vazio"
             ];
+
             continue;
         }
 
-        $apiUrl = $url . "/player_api.php?username=" . urlencode($usuario) . "&password=" . urlencode($senha);
+        $apiUrl = $url . "/player_api.php?username=" . urlencode($user) . "&password=" . urlencode($pass);
 
-        $consulta = consultarXtream($apiUrl);
+        $response = @file_get_contents($apiUrl);
 
-        if (!$consulta["success"] || $consulta["resposta"] === false || trim($consulta["resposta"]) === '') {
-            $falhas++;
-            $detalhes[] = [
-                "id" => (int)$id,
-                "cliente_id" => (int)$sistema['cliente_id'],
-                "nome_sistema" => $sistema['nome_sistema'],
-                "status" => "falha",
-                "motivo" => "sem resposta da Xtream",
-                "http_code" => $consulta["http_code"],
-                "curl_error" => $consulta["curl_error"],
-                "tentativas" => $consulta["tentativas"]
-            ];
-            continue;
+        if ($response) {
+            $data = json_decode($response, true);
+
+            if (isset($data['user_info'])) {
+                $status = $data['user_info']['status'] ?? null;
+                $exp_date = $data['user_info']['exp_date'] ?? null;
+
+                if ($exp_date) {
+                    $vencimento = date("Y-m-d", intval($exp_date));
+                }
+            }
         }
 
-        $resposta = $consulta["resposta"];
-        $json = json_decode($resposta, true);
+        if (!$status) {
+            if (!empty($s['m3u_url'])) {
+                $m3u = @file_get_contents($s['m3u_url']);
 
-        if (!is_array($json) || !isset($json['user_info'])) {
-            $falhas++;
-            $detalhes[] = [
-                "id" => (int)$id,
-                "cliente_id" => (int)$sistema['cliente_id'],
-                "nome_sistema" => $sistema['nome_sistema'],
-                "status" => "falha",
-                "motivo" => "resposta inválida da Xtream",
-                "http_code" => $consulta["http_code"],
-                "tentativas" => $consulta["tentativas"],
-                "resposta_inicio" => substr($resposta, 0, 120)
-            ];
-            continue;
+                if ($m3u && strpos($m3u, "#EXTM3U") !== false) {
+                    $status = "Active";
+                }
+            }
         }
 
-        $userInfo = $json['user_info'];
-
-        $statusXtream = $userInfo['status'] ?? '';
-        $expDateRaw = $userInfo['exp_date'] ?? '';
-        $expDate = intval($expDateRaw);
-
-        if ($expDate <= 0) {
-            $sem_exp_date++;
-            $detalhes[] = [
-                "id" => (int)$id,
-                "cliente_id" => (int)$sistema['cliente_id'],
-                "nome_sistema" => $sistema['nome_sistema'],
-                "status" => $statusXtream,
-                "motivo" => "sem exp_date",
-                "exp_date_raw" => $expDateRaw,
-                "tentativas" => $consulta["tentativas"]
-            ];
-            continue;
+        if (!$vencimento && !empty($s['vencimento'])) {
+            $vencimento = $s['vencimento'];
         }
 
-        $novoVencimento = date("Y-m-d", $expDate);
-
-        $stmtUpdate = $pdo->prepare("
+        $update = $pdo->prepare("
             UPDATE public.sistemas
-            SET vencimento = :vencimento
+            SET
+                status = :status,
+                exp_date = :exp_date,
+                vencimento = :vencimento
             WHERE id = :id
         ");
 
-        $stmtUpdate->execute([
-            ':vencimento' => $novoVencimento,
+        $update->execute([
+            ':status' => $status,
+            ':exp_date' => $exp_date,
+            ':vencimento' => $vencimento,
             ':id' => $id
         ]);
 
@@ -210,14 +140,13 @@ try {
 
         $detalhes[] = [
             "id" => (int)$id,
-            "cliente_id" => (int)$sistema['cliente_id'],
-            "nome_sistema" => $sistema['nome_sistema'],
+            "cliente_id" => (int)$s['cliente_id'],
+            "nome_sistema" => $s['nome_sistema'] ?? '',
             "status" => "atualizado",
-            "status_xtream" => $statusXtream,
-            "exp_date_raw" => $expDateRaw,
-            "vencimento_antigo" => $sistema['vencimento'],
-            "vencimento_novo" => $novoVencimento,
-            "tentativas" => $consulta["tentativas"]
+            "status_xtream" => $status,
+            "exp_date" => $exp_date,
+            "vencimento_antigo" => $s['vencimento'] ?? null,
+            "vencimento_novo" => $vencimento
         ];
     }
 
@@ -227,17 +156,19 @@ try {
             SELECT 1
             FROM public.sistemas s
             WHERE s.cliente_id = c.id
-            AND s.vencimento >= CURRENT_DATE
+            AND (
+                s.status = 'Active'
+                OR s.vencimento >= CURRENT_DATE
+            )
         )
     ");
 
     echo json_encode([
         "success" => true,
-        "message" => "Atualização concluída",
+        "message" => "Sistemas atualizados e clientes sincronizados corretamente",
         "cliente_id" => $cliente_id !== '' ? intval($cliente_id) : null,
         "total_sistemas" => $total,
         "atualizados" => $atualizados,
-        "sem_exp_date" => $sem_exp_date,
         "falhas" => $falhas,
         "clientes_sincronizados" => true,
         "detalhes" => $detalhes

@@ -5,52 +5,70 @@ date_default_timezone_set("America/Sao_Paulo");
 $enquete_id = $_REQUEST["enquete_id"] ?? "";
 
 if ($enquete_id === "") {
-    echo json_encode([
-        "success" => false,
-        "message" => "enquete_id é obrigatório"
-    ]);
+    echo json_encode(["success" => false, "message" => "enquete_id é obrigatório"]);
     exit;
 }
 
 $DATABASE_URL = getenv("DATABASE_URL");
 
-if (!$DATABASE_URL) {
-    echo json_encode([
-        "success" => false,
-        "message" => "DATABASE_URL não configurada"
-    ]);
-    exit;
-}
-
 try {
     $db = parse_url($DATABASE_URL);
 
-    $host = $db["host"];
-    $port = $db["port"] ?? 5432;
-    $dbname = ltrim($db["path"], "/");
-    $user = $db["user"];
-    $pass = $db["pass"];
+    $pdo = new PDO(
+        "pgsql:host={$db["host"]};port=" . ($db["port"] ?? 5432) . ";dbname=" . ltrim($db["path"], "/") . ";sslmode=require",
+        $db["user"],
+        $db["pass"],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
 
-    $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require";
+    $colunas = $pdo->query("
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'enquete_opcoes'
+    ")->fetchAll(PDO::FETCH_COLUMN);
 
-    $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+    $possiveis = [
+        "correta",
+        "correto",
+        "is_correta",
+        "opcao_correta",
+        "eh_correta",
+        "certa",
+        "vencedora"
+    ];
+
+    $colunaResultado = null;
+
+    foreach ($possiveis as $coluna) {
+        if (in_array($coluna, $colunas)) {
+            $colunaResultado = $coluna;
+            break;
+        }
+    }
+
+    if (!$colunaResultado) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Nenhuma coluna de resultado encontrada em enquete_opcoes",
+            "colunas_encontradas" => $colunas
+        ]);
+        exit;
+    }
 
     $stmt = $pdo->prepare("
         UPDATE enquete_opcoes
-        SET correta = false
+        SET {$colunaResultado} = false
         WHERE enquete_id = :enquete_id
     ");
 
-    $stmt->execute([
-        ":enquete_id" => $enquete_id
-    ]);
+    $stmt->execute([":enquete_id" => $enquete_id]);
 
     echo json_encode([
         "success" => true,
-        "message" => "Resultado da enquete limpo com sucesso"
+        "message" => "Resultado da enquete limpo com sucesso",
+        "coluna_usada" => $colunaResultado
     ]);
+
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,

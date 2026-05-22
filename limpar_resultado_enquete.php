@@ -26,7 +26,9 @@ try {
 
     $stmt = $pdo->prepare("
         UPDATE enquetes
-        SET opcoes_corretas_ids = NULL
+        SET 
+            opcao_correta_id = NULL,
+            resultado_definido = false
         WHERE id = :enquete_id
     ");
 

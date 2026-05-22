@@ -1,5 +1,5 @@
 <?php
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=utf-8");
 date_default_timezone_set("America/Sao_Paulo");
 
 $enquete_id = $_REQUEST["enquete_id"] ?? "";
@@ -22,39 +22,40 @@ if (!$DATABASE_URL) {
     exit;
 }
 
-$db = parse_url($DATABASE_URL);
+try {
+    $db = parse_url($DATABASE_URL);
 
-$conn = pg_connect(
-    "host={$db["host"]} " .
-    "port={$db["port"]} " .
-    "dbname=" . ltrim($db["path"], "/") . " " .
-    "user={$db["user"]} " .
-    "password={$db["pass"]} " .
-    "sslmode=require"
-);
+    $host = $db["host"];
+    $port = $db["port"] ?? 5432;
+    $dbname = ltrim($db["path"], "/");
+    $user = $db["user"];
+    $pass = $db["pass"];
 
-if (!$conn) {
+    $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require";
+
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
+
+    $stmt = $pdo->prepare("
+        UPDATE enquete_opcoes
+        SET correta = false
+        WHERE enquete_id = :enquete_id
+    ");
+
+    $stmt->execute([
+        ":enquete_id" => $enquete_id
+    ]);
+
+    echo json_encode([
+        "success" => true,
+        "message" => "Resultado da enquete limpo com sucesso"
+    ]);
+} catch (Exception $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Erro ao conectar ao banco"
+        "message" => "Erro ao limpar resultado da enquete",
+        "erro" => $e->getMessage()
     ]);
-    exit;
 }
-
-$sql = "UPDATE enquete_opcoes SET correta = false WHERE enquete_id = $1";
-
-$result = pg_query_params($conn, $sql, [$enquete_id]);
-
-if (!$result) {
-    echo json_encode([
-        "success" => false,
-        "message" => "Erro ao limpar resultado da enquete"
-    ]);
-    exit;
-}
-
-echo json_encode([
-    "success" => true,
-    "message" => "Resultado da enquete limpo com sucesso"
-]);
 ?>

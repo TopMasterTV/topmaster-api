@@ -121,10 +121,10 @@ try {
 
     $max_opcoes = intval($enquete['max_opcoes']);
 
-    if (count($opcoes) > $max_opcoes) {
+    if (count($opcoes) !== $max_opcoes) {
         echo json_encode([
             "success" => false,
-            "message" => "Esta enquete permite no máximo {$max_opcoes} opção/opções"
+            "message" => "Esta enquete exige exatamente {$max_opcoes} opção/opções"
         ]);
         exit;
     }

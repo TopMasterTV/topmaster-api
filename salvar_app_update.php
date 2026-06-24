@@ -23,15 +23,15 @@ try {
     $mensagem = trim($input["mensagem"] ?? "");
     $url_apk = trim($input["url_apk"] ?? "");
 
-    $obrigatoria = filter_var(
-        $input["obrigatoria"] ?? false,
-        FILTER_VALIDATE_BOOLEAN
-    );
+   $obrigatoria = (
+    ($input["obrigatoria"] ?? '0') == '1' ||
+    ($input["obrigatoria"] ?? false) === true
+);
 
-    $ativa = filter_var(
-        $input["ativa"] ?? true,
-        FILTER_VALIDATE_BOOLEAN
-    );
+$ativa = (
+    ($input["ativa"] ?? '1') == '1' ||
+    ($input["ativa"] ?? true) === true
+);
 
     if (
         empty($versao) ||

@@ -61,6 +61,34 @@ try {
             : "Participação livre";
     }
 
+    if (count($participacoes) === 0) {
+        $stmtVotosLivres = $pdo->prepare("
+            SELECT COUNT(*) AS total
+            FROM public.enquete_respostas er
+            INNER JOIN public.enquetes e
+                ON e.id = er.enquete_id
+            WHERE e.campanha_id = :campanha_id
+            AND er.cliente_id = :cliente_id
+            AND er.participacao_id IS NULL
+        ");
+
+        $stmtVotosLivres->execute([
+            ':campanha_id' => $campanha_id,
+            ':cliente_id' => $cliente_id
+        ]);
+
+        $totalVotosLivres = intval($stmtVotosLivres->fetchColumn());
+
+        if ($totalVotosLivres > 0) {
+            $participacoes[] = [
+                "participacao_id" => "",
+                "codigo" => "",
+                "criado_em" => null,
+                "codigo_texto" => "Participação livre"
+            ];
+        }
+    }
+
     echo json_encode([
         "success" => true,
         "participacoes" => $participacoes

@@ -7,7 +7,6 @@ header("Content-Type: application/json; charset=UTF-8");
 require_once "db.php";
 
 try {
-
     $input = json_decode(file_get_contents("php://input"), true);
 
     if (!$input) {
@@ -23,19 +22,21 @@ try {
     $mensagem = trim($input["mensagem"] ?? "");
     $url_apk = trim($input["url_apk"] ?? "");
 
-   $obrigatoria = (
-    ($input["obrigatoria"] ?? '0') == '1' ||
-    ($input["obrigatoria"] ?? false) === true
-);
+    $obrigatoria = (
+        ($input["obrigatoria"] ?? "0") == "1" ||
+        ($input["obrigatoria"] ?? false) === true ||
+        ($input["obrigatoria"] ?? "") === "true"
+    );
 
-$ativa = (
-    ($input["ativa"] ?? '1') == '1' ||
-    ($input["ativa"] ?? true) === true
-);
+    $ativa = (
+        ($input["ativa"] ?? "1") == "1" ||
+        ($input["ativa"] ?? true) === true ||
+        ($input["ativa"] ?? "") === "true"
+    );
 
     if (
         empty($versao) ||
-        empty($version_code) ||
+        $version_code <= 0 ||
         empty($mensagem) ||
         empty($url_apk)
     ) {
@@ -92,8 +93,8 @@ $ativa = (
         ":version_code" => $version_code,
         ":mensagem" => $mensagem,
         ":url_apk" => $url_apk,
-        ":obrigatoria" => $obrigatoria,
-        ":ativa" => $ativa
+        ":obrigatoria" => $obrigatoria ? "true" : "false",
+        ":ativa" => $ativa ? "true" : "false"
     ]);
 
     $id = $stmt->fetchColumn();
@@ -105,10 +106,8 @@ $ativa = (
         "id" => $id,
         "mensagem" => "Atualização salva com sucesso."
     ]);
-
 } catch (Exception $e) {
-
-    if ($pdo->inTransaction()) {
+    if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
 

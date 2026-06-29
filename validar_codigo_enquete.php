@@ -5,6 +5,8 @@ date_default_timezone_set("America/Sao_Paulo");
 $codigo = trim($_REQUEST['codigo'] ?? '');
 $cliente_id = $_REQUEST['cliente_id'] ?? '';
 
+$version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
+
 if ($codigo === '' || $cliente_id === '') {
     echo json_encode([
         "success" => false,
@@ -54,7 +56,11 @@ try {
             camp.resultado_titulo,
             camp.resultado_descricao,
             camp.resultado_link,
-            camp.resultado_publicado
+            camp.resultado_publicado,
+
+            camp.exige_versao_minima,
+            camp.version_code_minimo,
+            camp.mensagem_app_desatualizado
 
         FROM public.enquete_codigos ec
         INNER JOIN public.clientes c
@@ -88,6 +94,29 @@ try {
                 "nome" => $dados['cliente_nome'],
                 "usuario" => $dados['cliente_usuario']
             ]
+        ]);
+        exit;
+    }
+
+    // Bloqueio por versão mínima da campanha
+    if (
+        isset($dados['exige_versao_minima']) &&
+        (
+            $dados['exige_versao_minima'] === true ||
+            $dados['exige_versao_minima'] === 't' ||
+            $dados['exige_versao_minima'] === '1' ||
+            $dados['exige_versao_minima'] === 1
+        ) &&
+        intval($dados['version_code_minimo']) > $version_code_cliente
+    ) {
+        echo json_encode([
+            "success" => false,
+            "update_required" => true,
+            "version_code_minimo" => intval($dados['version_code_minimo']),
+            "message" =>
+                !empty($dados['mensagem_app_desatualizado'])
+                    ? $dados['mensagem_app_desatualizado']
+                    : "Atualize seu aplicativo para participar desta campanha."
         ]);
         exit;
     }

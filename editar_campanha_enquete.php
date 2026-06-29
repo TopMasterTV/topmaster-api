@@ -19,6 +19,10 @@ $resultado_publicado = $_REQUEST['resultado_publicado'] ?? '';
 
 $video_sorteio_url = $_REQUEST['video_sorteio_url'] ?? '';
 
+$exige_versao_minima = $_REQUEST['exige_versao_minima'] ?? '';
+$version_code_minimo = $_REQUEST['version_code_minimo'] ?? '';
+$mensagem_app_desatualizado = $_REQUEST['mensagem_app_desatualizado'] ?? '';
+
 if ($id === '') {
     echo json_encode([
         "success" => false,
@@ -153,6 +157,38 @@ try {
     if ($video_sorteio_url !== '') {
         $campos[] = "video_sorteio_url = :video_sorteio_url";
         $params[':video_sorteio_url'] = $video_sorteio_url;
+    }
+
+    if ($exige_versao_minima !== '') {
+        $exige_versao_minima_bool = (
+            $exige_versao_minima === '1' ||
+            strtolower($exige_versao_minima) === 'true' ||
+            strtolower($exige_versao_minima) === 'sim'
+        );
+
+        $campos[] = "exige_versao_minima = :exige_versao_minima";
+        $params[':exige_versao_minima'] = $exige_versao_minima_bool;
+
+        if ($exige_versao_minima_bool) {
+            $version_code_minimo_int = intval($version_code_minimo);
+
+            if ($version_code_minimo_int < 1) {
+                echo json_encode([
+                    "success" => false,
+                    "message" => "version_code_minimo é obrigatório quando exige_versao_minima estiver ativo"
+                ]);
+                exit;
+            }
+
+            $campos[] = "version_code_minimo = :version_code_minimo";
+            $params[':version_code_minimo'] = $version_code_minimo_int;
+
+            $campos[] = "mensagem_app_desatualizado = :mensagem_app_desatualizado";
+            $params[':mensagem_app_desatualizado'] = $mensagem_app_desatualizado;
+        } else {
+            $campos[] = "version_code_minimo = NULL";
+            $campos[] = "mensagem_app_desatualizado = ''";
+        }
     }
 
     if (count($campos) === 0) {

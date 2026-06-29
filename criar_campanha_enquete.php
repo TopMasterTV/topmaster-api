@@ -15,6 +15,10 @@ $resultado_descricao = $_REQUEST['resultado_descricao'] ?? '';
 $resultado_link = $_REQUEST['resultado_link'] ?? '';
 $resultado_publicado = $_REQUEST['resultado_publicado'] ?? '0';
 
+$exige_versao_minima = $_REQUEST['exige_versao_minima'] ?? '0';
+$version_code_minimo = $_REQUEST['version_code_minimo'] ?? '';
+$mensagem_app_desatualizado = $_REQUEST['mensagem_app_desatualizado'] ?? '';
+
 if ($titulo === '' || $encerra_em === '') {
     echo json_encode([
         "success" => false,
@@ -49,6 +53,26 @@ if ($tipo_classificacao === 'todos') {
     if ($minimo_acertos < 1) {
         $minimo_acertos = 1;
     }
+}
+
+$exige_versao_minima_bool = (
+    $exige_versao_minima === '1' ||
+    strtolower($exige_versao_minima) === 'true' ||
+    strtolower($exige_versao_minima) === 'sim'
+);
+
+if ($exige_versao_minima_bool) {
+    $version_code_minimo = intval($version_code_minimo);
+    if ($version_code_minimo < 1) {
+        echo json_encode([
+            "success" => false,
+            "message" => "version_code_minimo é obrigatório quando exige_versao_minima estiver ativo"
+        ]);
+        exit;
+    }
+} else {
+    $version_code_minimo = null;
+    $mensagem_app_desatualizado = '';
 }
 
 $DATABASE_URL = getenv("DATABASE_URL");
@@ -90,7 +114,10 @@ try {
             resultado_titulo,
             resultado_descricao,
             resultado_link,
-            resultado_publicado
+            resultado_publicado,
+            exige_versao_minima,
+            version_code_minimo,
+            mensagem_app_desatualizado
         )
         VALUES
         (
@@ -103,7 +130,10 @@ try {
             :resultado_titulo,
             :resultado_descricao,
             :resultado_link,
-            :resultado_publicado
+            :resultado_publicado,
+            :exige_versao_minima,
+            :version_code_minimo,
+            :mensagem_app_desatualizado
         )
         RETURNING id
     ");
@@ -118,7 +148,10 @@ try {
         ':resultado_titulo' => $resultado_titulo,
         ':resultado_descricao' => $resultado_descricao,
         ':resultado_link' => $resultado_link,
-        ':resultado_publicado' => $resultado_publicado_bool
+        ':resultado_publicado' => $resultado_publicado_bool,
+        ':exige_versao_minima' => $exige_versao_minima_bool,
+        ':version_code_minimo' => $version_code_minimo,
+        ':mensagem_app_desatualizado' => $mensagem_app_desatualizado
     ]);
 
     echo json_encode([

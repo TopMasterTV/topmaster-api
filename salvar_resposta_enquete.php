@@ -7,6 +7,9 @@ $enquete_id = $_REQUEST['enquete_id'] ?? '';
 $cliente_id = $_REQUEST['cliente_id'] ?? '';
 $participacao_id = $_REQUEST['participacao_id'] ?? '';
 $opcoes_ids = $_REQUEST['opcoes_ids'] ?? '';
+$codigo = trim($_REQUEST['codigo'] ?? '');
+
+$version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
 
 if ($campanha_id === '' || $enquete_id === '' || $cliente_id === '' || $opcoes_ids === '') {
     echo json_encode([
@@ -40,7 +43,14 @@ try {
     );
 
     $stmtCampanha = $pdo->prepare("
-        SELECT id, ativa, encerra_em, modo_participacao
+        SELECT
+            id,
+            ativa,
+            encerra_em,
+            modo_participacao,
+            exige_versao_minima,
+            version_code_minimo,
+            mensagem_app_desatualizado
         FROM public.enquete_campanhas
         WHERE id = :campanha_id
         LIMIT 1
@@ -56,6 +66,29 @@ try {
         echo json_encode([
             "success" => false,
             "message" => "Campanha não encontrada"
+        ]);
+        exit;
+    }
+
+    // Bloqueio por versão mínima da campanha
+    if (
+        isset($campanha['exige_versao_minima']) &&
+        (
+            $campanha['exige_versao_minima'] === true ||
+            $campanha['exige_versao_minima'] === 't' ||
+            $campanha['exige_versao_minima'] === '1' ||
+            $campanha['exige_versao_minima'] === 1
+        ) &&
+        intval($campanha['version_code_minimo']) > $version_code_cliente
+    ) {
+        echo json_encode([
+            "success" => false,
+            "update_required" => true,
+            "version_code_minimo" => intval($campanha['version_code_minimo']),
+            "message" =>
+                !empty($campanha['mensagem_app_desatualizado'])
+                    ? $campanha['mensagem_app_desatualizado']
+                    : "Atualize seu aplicativo para participar desta campanha."
         ]);
         exit;
     }
@@ -155,7 +188,8 @@ try {
     $modo = $campanha['modo_participacao'];
 
     if ($modo === 'codigo') {
-        if ($participacao_id === '') {
+
+        if ($participacao_id === '' && $codigo === '') {
             echo json_encode([
                 "success" => false,
                 "message" => "participacao_id é obrigatório para campanha por código"
@@ -163,45 +197,146 @@ try {
             exit;
         }
 
-        $stmtParticipacao = $pdo->prepare("
+        if ($participacao_id !== '') {
+            $stmtParticipacao = $pdo->prepare("
+                SELECT id
+                FROM public.enquete_participacoes
+                WHERE id = :participacao_id
+                AND campanha_id = :campanha_id
+                AND cliente_id = :cliente_id
+                LIMIT 1
+            ");
+
+            $stmtParticipacao->execute([
+                ':participacao_id' => $participacao_id,
+                ':campanha_id' => $campanha_id,
+                ':cliente_id' => $cliente_id
+            ]);
+
+            if (!$stmtParticipacao->fetch()) {
+                echo json_encode([
+                    "success" => false,
+                    "message" => "Código/participação inválida para este cliente"
+                ]);
+                exit;
+            }
+        }
+    }
+
+    $pdo->beginTransaction();
+
+    if ($modo === 'codigo') {
+
+        if ($participacao_id === '') {
+            $stmtBuscaParticipacao = $pdo->prepare("
+                SELECT id
+                FROM public.enquete_participacoes
+                WHERE campanha_id = :campanha_id
+                AND cliente_id = :cliente_id
+                AND codigo = :codigo
+                LIMIT 1
+            ");
+
+            $stmtBuscaParticipacao->execute([
+                ':campanha_id' => $campanha_id,
+                ':cliente_id' => $cliente_id,
+                ':codigo' => $codigo
+            ]);
+
+            $participacaoExistente = $stmtBuscaParticipacao->fetch(PDO::FETCH_ASSOC);
+
+            if ($participacaoExistente) {
+                $participacao_id = $participacaoExistente['id'];
+            } else {
+                $stmtCriarParticipacao = $pdo->prepare("
+                    INSERT INTO public.enquete_participacoes
+                    (
+                        campanha_id,
+                        cliente_id,
+                        codigo
+                    )
+                    VALUES
+                    (
+                        :campanha_id,
+                        :cliente_id,
+                        :codigo
+                    )
+                    RETURNING id
+                ");
+
+                $stmtCriarParticipacao->execute([
+                    ':campanha_id' => $campanha_id,
+                    ':cliente_id' => $cliente_id,
+                    ':codigo' => $codigo
+                ]);
+
+                $novaParticipacao = $stmtCriarParticipacao->fetch(PDO::FETCH_ASSOC);
+                $participacao_id = $novaParticipacao['id'];
+            }
+        }
+
+    } else {
+
+        $stmtBuscaParticipacao = $pdo->prepare("
             SELECT id
             FROM public.enquete_participacoes
-            WHERE id = :participacao_id
-            AND campanha_id = :campanha_id
+            WHERE campanha_id = :campanha_id
             AND cliente_id = :cliente_id
+            AND codigo IS NULL
             LIMIT 1
         ");
 
-        $stmtParticipacao->execute([
-            ':participacao_id' => $participacao_id,
+        $stmtBuscaParticipacao->execute([
             ':campanha_id' => $campanha_id,
             ':cliente_id' => $cliente_id
         ]);
 
-        if (!$stmtParticipacao->fetch()) {
-            echo json_encode([
-                "success" => false,
-                "message" => "Código/participação inválida para este cliente"
-            ]);
-            exit;
-        }
-    } else {
-        $participacao_id = null;
-    }
+        $participacaoExistente = $stmtBuscaParticipacao->fetch(PDO::FETCH_ASSOC);
 
-    $pdo->beginTransaction();
+        if ($participacaoExistente) {
+            $participacao_id = $participacaoExistente['id'];
+        } else {
+            $stmtCriarParticipacao = $pdo->prepare("
+                INSERT INTO public.enquete_participacoes
+                (
+                    campanha_id,
+                    cliente_id,
+                    codigo
+                )
+                VALUES
+                (
+                    :campanha_id,
+                    :cliente_id,
+                    NULL
+                )
+                RETURNING id
+            ");
+
+            $stmtCriarParticipacao->execute([
+                ':campanha_id' => $campanha_id,
+                ':cliente_id' => $cliente_id
+            ]);
+
+            $novaParticipacao = $stmtCriarParticipacao->fetch(PDO::FETCH_ASSOC);
+            $participacao_id = $novaParticipacao['id'];
+        }
+    }
 
     if ($modo === 'livre') {
         $stmtDelete = $pdo->prepare("
             DELETE FROM public.enquete_respostas
             WHERE enquete_id = :enquete_id
             AND cliente_id = :cliente_id
-            AND participacao_id IS NULL
+            AND (
+                participacao_id = :participacao_id
+                OR participacao_id IS NULL
+            )
         ");
 
         $stmtDelete->execute([
             ':enquete_id' => $enquete_id,
-            ':cliente_id' => $cliente_id
+            ':cliente_id' => $cliente_id,
+            ':participacao_id' => $participacao_id
         ]);
     } else {
         $stmtDelete = $pdo->prepare("
@@ -248,7 +383,8 @@ try {
 
     echo json_encode([
         "success" => true,
-        "message" => "Voto salvo com sucesso"
+        "message" => "Voto salvo com sucesso",
+        "participacao_id" => $participacao_id
     ]);
 
 } catch (Exception $e) {

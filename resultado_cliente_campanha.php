@@ -6,6 +6,8 @@ $campanha_id = $_REQUEST['campanha_id'] ?? '';
 $cliente_id = $_REQUEST['cliente_id'] ?? '';
 $participacao_id = $_REQUEST['participacao_id'] ?? '';
 
+$version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
+
 if ($campanha_id === '' || $cliente_id === '') {
     echo json_encode([
         "success" => false,
@@ -41,10 +43,14 @@ try {
             id,
             titulo,
             descricao,
+            modo_participacao,
             resultado_titulo,
             resultado_descricao,
             resultado_link,
-            resultado_publicado
+            resultado_publicado,
+            exige_versao_minima,
+            version_code_minimo,
+            mensagem_app_desatualizado
         FROM public.enquete_campanhas
         WHERE id = :campanha_id
         LIMIT 1
@@ -62,6 +68,56 @@ try {
             "message" => "Campanha não encontrada"
         ]);
         exit;
+    }
+
+    // Bloqueio por versão mínima da campanha
+    if (
+        isset($campanha['exige_versao_minima']) &&
+        (
+            $campanha['exige_versao_minima'] === true ||
+            $campanha['exige_versao_minima'] === 't' ||
+            $campanha['exige_versao_minima'] === '1' ||
+            $campanha['exige_versao_minima'] === 1
+        ) &&
+        intval($campanha['version_code_minimo']) > $version_code_cliente
+    ) {
+        echo json_encode([
+            "success" => false,
+            "update_required" => true,
+            "version_code_minimo" => intval($campanha['version_code_minimo']),
+            "message" =>
+                !empty($campanha['mensagem_app_desatualizado'])
+                    ? $campanha['mensagem_app_desatualizado']
+                    : "Atualize seu aplicativo para participar desta campanha."
+        ]);
+        exit;
+    }
+
+    $modo_participacao = $campanha['modo_participacao'] ?? '';
+
+    $participacao_id_resolvida = $participacao_id;
+
+    if ($participacao_id_resolvida === '' && $modo_participacao === 'livre') {
+        $stmtParticipacaoLivre = $pdo->prepare("
+            SELECT id
+            FROM public.enquete_participacoes
+            WHERE campanha_id = :campanha_id
+            AND cliente_id = :cliente_id
+            AND codigo IS NULL
+            ORDER BY id ASC
+            LIMIT 1
+        ");
+
+        $stmtParticipacaoLivre->execute([
+            ':campanha_id' => $campanha_id,
+            ':cliente_id' => $cliente_id
+        ]);
+
+        $participacaoLivre = $stmtParticipacaoLivre->fetch(PDO::FETCH_ASSOC);
+
+        if ($participacaoLivre) {
+            $participacao_id_resolvida = $participacaoLivre['id'];
+        }
     }
 
     $stmtEnquetes = $pdo->prepare("
@@ -89,25 +145,49 @@ try {
     foreach ($enquetes as $enquete) {
         $enquete_id = $enquete['id'];
 
-        if ($participacao_id !== '') {
-            $stmtRespostas = $pdo->prepare("
-                SELECT
-                    er.opcao_id,
-                    o.texto
-                FROM public.enquete_respostas er
-                INNER JOIN public.enquete_opcoes o
-                    ON o.id = er.opcao_id
-                WHERE er.enquete_id = :enquete_id
-                AND er.cliente_id = :cliente_id
-                AND er.participacao_id = :participacao_id
-                ORDER BY er.opcao_id ASC
-            ");
+        if ($participacao_id_resolvida !== '') {
+            if ($modo_participacao === 'livre') {
+                $stmtRespostas = $pdo->prepare("
+                    SELECT
+                        er.opcao_id,
+                        o.texto
+                    FROM public.enquete_respostas er
+                    INNER JOIN public.enquete_opcoes o
+                        ON o.id = er.opcao_id
+                    WHERE er.enquete_id = :enquete_id
+                    AND er.cliente_id = :cliente_id
+                    AND (
+                        er.participacao_id = :participacao_id
+                        OR er.participacao_id IS NULL
+                    )
+                    ORDER BY er.opcao_id ASC
+                ");
 
-            $stmtRespostas->execute([
-                ':enquete_id' => $enquete_id,
-                ':cliente_id' => $cliente_id,
-                ':participacao_id' => $participacao_id
-            ]);
+                $stmtRespostas->execute([
+                    ':enquete_id' => $enquete_id,
+                    ':cliente_id' => $cliente_id,
+                    ':participacao_id' => $participacao_id_resolvida
+                ]);
+            } else {
+                $stmtRespostas = $pdo->prepare("
+                    SELECT
+                        er.opcao_id,
+                        o.texto
+                    FROM public.enquete_respostas er
+                    INNER JOIN public.enquete_opcoes o
+                        ON o.id = er.opcao_id
+                    WHERE er.enquete_id = :enquete_id
+                    AND er.cliente_id = :cliente_id
+                    AND er.participacao_id = :participacao_id
+                    ORDER BY er.opcao_id ASC
+                ");
+
+                $stmtRespostas->execute([
+                    ':enquete_id' => $enquete_id,
+                    ':cliente_id' => $cliente_id,
+                    ':participacao_id' => $participacao_id_resolvida
+                ]);
+            }
         } else {
             $stmtRespostas = $pdo->prepare("
                 SELECT

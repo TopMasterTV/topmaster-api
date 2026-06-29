@@ -5,6 +5,8 @@ $campanha_id = $_REQUEST['campanha_id'] ?? '';
 $cliente_id  = $_REQUEST['cliente_id'] ?? '';
 $codigo      = trim($_REQUEST['codigo'] ?? '');
 
+$version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
+
 if ($campanha_id === '' || $cliente_id === '') {
     echo json_encode([
         "success" => false,
@@ -35,6 +37,55 @@ try {
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
+
+    // Busca a campanha para validar versão mínima antes de registrar participação
+    $stmtCampanha = $pdo->prepare("
+        SELECT
+            id,
+            exige_versao_minima,
+            version_code_minimo,
+            mensagem_app_desatualizado
+        FROM public.enquete_campanhas
+        WHERE id = :campanha_id
+        LIMIT 1
+    ");
+
+    $stmtCampanha->execute([
+        ':campanha_id' => $campanha_id
+    ]);
+
+    $campanha = $stmtCampanha->fetch(PDO::FETCH_ASSOC);
+
+    if (!$campanha) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Campanha não encontrada"
+        ]);
+        exit;
+    }
+
+    // Bloqueio por versão mínima da campanha
+    if (
+        isset($campanha['exige_versao_minima']) &&
+        (
+            $campanha['exige_versao_minima'] === true ||
+            $campanha['exige_versao_minima'] === 't' ||
+            $campanha['exige_versao_minima'] === '1' ||
+            $campanha['exige_versao_minima'] === 1
+        ) &&
+        intval($campanha['version_code_minimo']) > $version_code_cliente
+    ) {
+        echo json_encode([
+            "success" => false,
+            "update_required" => true,
+            "version_code_minimo" => intval($campanha['version_code_minimo']),
+            "message" =>
+                !empty($campanha['mensagem_app_desatualizado'])
+                    ? $campanha['mensagem_app_desatualizado']
+                    : "Atualize seu aplicativo para participar desta campanha."
+        ]);
+        exit;
+    }
 
     // verifica se já existe participação
     $check = $pdo->prepare("

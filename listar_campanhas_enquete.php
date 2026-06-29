@@ -32,10 +32,16 @@ try {
             encerra_em,
             criado_em,
             modo_participacao,
+            tipo_classificacao,
+            minimo_acertos,
             resultado_titulo,
             resultado_descricao,
             resultado_link,
-            resultado_publicado
+            resultado_publicado,
+            video_sorteio_url,
+            exige_versao_minima,
+            version_code_minimo,
+            mensagem_app_desatualizado
         FROM public.enquete_campanhas
         ORDER BY id DESC
     ");

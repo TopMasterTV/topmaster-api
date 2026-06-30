@@ -70,7 +70,6 @@ try {
         exit;
     }
 
-    // Bloqueio por versão mínima da campanha
     if (
         isset($campanha['exige_versao_minima']) &&
         (
@@ -277,18 +276,21 @@ try {
 
     } else {
 
+        $codigo_livre = 'LIVRE-' . $campanha_id . '-' . $cliente_id;
+
         $stmtBuscaParticipacao = $pdo->prepare("
             SELECT id
             FROM public.enquete_participacoes
             WHERE campanha_id = :campanha_id
             AND cliente_id = :cliente_id
-            AND codigo IS NULL
+            AND codigo = :codigo
             LIMIT 1
         ");
 
         $stmtBuscaParticipacao->execute([
             ':campanha_id' => $campanha_id,
-            ':cliente_id' => $cliente_id
+            ':cliente_id' => $cliente_id,
+            ':codigo' => $codigo_livre
         ]);
 
         $participacaoExistente = $stmtBuscaParticipacao->fetch(PDO::FETCH_ASSOC);
@@ -307,14 +309,15 @@ try {
                 (
                     :campanha_id,
                     :cliente_id,
-                    NULL
+                    :codigo
                 )
                 RETURNING id
             ");
 
             $stmtCriarParticipacao->execute([
                 ':campanha_id' => $campanha_id,
-                ':cliente_id' => $cliente_id
+                ':cliente_id' => $cliente_id,
+                ':codigo' => $codigo_livre
             ]);
 
             $novaParticipacao = $stmtCriarParticipacao->fetch(PDO::FETCH_ASSOC);

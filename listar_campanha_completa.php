@@ -4,37 +4,7 @@ date_default_timezone_set("America/Sao_Paulo");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
 $version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
-
-$DATABASE_URL = getenv("DATABASE_URL");
-
-if (!$DATABASE_URL) {
-    echo json_encode([
-        "success" => false,
-        "message" => "DATABASE_URL não definida"
-    ]);
-    exit;
-}
-
-$db = parse_url($DATABASE_URL);
-
-try {
-    $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
-        ";dbname=" . ltrim($db['path'], '/') .
-        ";sslmode=require",
-        $db['user'],
-        $db['pass'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-
-    if ($campanha_id === '') {
-        $stmtCampanha = $pdo->q…
-[19:40, 29/06/2026] Top Master VIP: <?php
-header("Content-Type: application/json");
-date_default_timezone_set("America/Sao_Paulo");
-
-$campanha_id = $_REQUEST['campanha_id'] ?? '';
-$version_code_cliente = intval($_REQUEST['version_code_cliente'] ?? 0);
+$origem = $_REQUEST['origem'] ?? '';
 
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -89,27 +59,28 @@ try {
         exit;
     }
 
-       // Bloqueio por versão mínima da campanha
-
+    // Bloqueio por versão mínima da campanha
+    // O painel desenvolvedor pode carregar normalmente usando origem=dev
     if (
-    isset($campanha['exige_versao_minima']) &&
-    (
-        $campanha['exige_versao_minima'] === true ||
-        $campanha['exige_versao_minima'] === 't' ||
-        $campanha['exige_versao_minima'] === '1' ||
-        $campanha['exige_versao_minima'] === 1
-    ) &&
-    intval($campanha['version_code_minimo']) > $version_code_cliente
-) {
+        $origem !== 'dev' &&
+        isset($campanha['exige_versao_minima']) &&
+        (
+            $campanha['exige_versao_minima'] === true ||
+            $campanha['exige_versao_minima'] === 't' ||
+            $campanha['exige_versao_minima'] === '1' ||
+            $campanha['exige_versao_minima'] === 1
+        ) &&
+        intval($campanha['version_code_minimo']) > $version_code_cliente
+    ) {
         echo json_encode([
-    "success" => false,
-    "update_required" => true,
-    "version_code_minimo" => intval($campanha['version_code_minimo']),
-    "message" =>
-        !empty($campanha['mensagem_app_desatualizado'])
-            ? $campanha['mensagem_app_desatualizado']
-            : "Atualize seu aplicativo para participar desta campanha."
-]);
+            "success" => false,
+            "update_required" => true,
+            "version_code_minimo" => intval($campanha['version_code_minimo']),
+            "message" =>
+                !empty($campanha['mensagem_app_desatualizado'])
+                    ? $campanha['mensagem_app_desatualizado']
+                    : "Atualize seu aplicativo para participar desta campanha."
+        ]);
         exit;
     }
 

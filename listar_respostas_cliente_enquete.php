@@ -66,7 +66,6 @@ try {
         exit;
     }
 
-    // Bloqueio por versão mínima da campanha
     if (
         isset($campanha['exige_versao_minima']) &&
         (
@@ -91,9 +90,6 @@ try {
 
     $modo_participacao = $campanha['modo_participacao'] ?? '';
 
-    // =========================
-    // CAMPANHA POR CÓDIGO
-    // =========================
     if ($modo_participacao === 'codigo') {
 
         if ($participacao_id === '') {
@@ -122,13 +118,9 @@ try {
             ':participacao_id' => $participacao_id
         ]);
 
-    }
+    } else {
 
-    // =========================
-    // CAMPANHA LIVRE
-    // =========================
-    else {
-
+        $codigo_livre = 'LIVRE-' . $campanha_id . '-' . $cliente_id;
         $participacao_id_resolvida = $participacao_id;
 
         if ($participacao_id_resolvida === '') {
@@ -137,14 +129,15 @@ try {
                 FROM public.enquete_participacoes
                 WHERE campanha_id = :campanha_id
                 AND cliente_id = :cliente_id
-                AND codigo IS NULL
+                AND codigo = :codigo
                 ORDER BY id ASC
                 LIMIT 1
             ");
 
             $stmtParticipacaoLivre->execute([
                 ':campanha_id' => $campanha_id,
-                ':cliente_id' => $cliente_id
+                ':cliente_id' => $cliente_id,
+                ':codigo' => $codigo_livre
             ]);
 
             $participacaoLivre = $stmtParticipacaoLivre->fetch(PDO::FETCH_ASSOC);
@@ -164,10 +157,7 @@ try {
                     ON e.id = er.enquete_id
                 WHERE e.campanha_id = :campanha_id
                 AND er.cliente_id = :cliente_id
-                AND (
-                    er.participacao_id = :participacao_id
-                    OR er.participacao_id IS NULL
-                )
+                AND er.participacao_id = :participacao_id
             ");
 
             $stmt->execute([
@@ -185,7 +175,6 @@ try {
                     ON e.id = er.enquete_id
                 WHERE e.campanha_id = :campanha_id
                 AND er.cliente_id = :cliente_id
-                AND er.participacao_id IS NULL
             ");
 
             $stmt->execute([

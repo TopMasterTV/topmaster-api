@@ -1,4 +1,4 @@
-[19:37, 29/06/2026] Top Master VIP: <?php
+<?php
 header("Content-Type: application/json");
 date_default_timezone_set("America/Sao_Paulo");
 

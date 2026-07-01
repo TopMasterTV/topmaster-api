@@ -1,5 +1,5 @@
 <?php
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=UTF-8");
 date_default_timezone_set("America/Sao_Paulo");
 
 $campanha_id = $_REQUEST['campanha_id'] ?? '';
@@ -12,7 +12,7 @@ if (!$DATABASE_URL) {
     echo json_encode([
         "success" => false,
         "message" => "DATABASE_URL não definida"
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -27,6 +27,9 @@ try {
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
+
+    // Garante UTF-8 na conexão
+    $pdo->exec("SET client_encoding TO 'UTF8'");
 
     if ($campanha_id === '') {
         $stmtCampanha = $pdo->query("
@@ -55,12 +58,10 @@ try {
         echo json_encode([
             "success" => false,
             "message" => "Nenhuma campanha encontrada"
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // Bloqueio por versão mínima da campanha
-    // O painel desenvolvedor pode carregar normalmente usando origem=dev
     if (
         $origem !== 'dev' &&
         isset($campanha['exige_versao_minima']) &&
@@ -80,7 +81,7 @@ try {
                 !empty($campanha['mensagem_app_desatualizado'])
                     ? $campanha['mensagem_app_desatualizado']
                     : "Atualize seu aplicativo para participar desta campanha."
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -150,12 +151,12 @@ try {
         "campanha" => $campanha,
         "encerrada" => $encerrada,
         "enquetes" => $enquetes
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
         "message" => "Erro ao listar campanha",
         "error" => $e->getMessage()
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 }

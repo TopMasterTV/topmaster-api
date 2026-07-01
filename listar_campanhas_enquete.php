@@ -1,5 +1,5 @@
 <?php
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=UTF-8");
 
 $DATABASE_URL = getenv("DATABASE_URL");
 
@@ -7,7 +7,7 @@ if (!$DATABASE_URL) {
     echo json_encode([
         "success" => false,
         "message" => "DATABASE_URL não definida"
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -22,6 +22,8 @@ try {
         $db['pass'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
+
+    $pdo->exec("SET client_encoding TO 'UTF8'");
 
     $stmtCampanhas = $pdo->query("
         SELECT
@@ -92,12 +94,12 @@ try {
     echo json_encode([
         "success" => true,
         "campanhas" => $campanhas
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
     echo json_encode([
         "success" => false,
         "message" => "Erro ao listar campanhas",
         "error" => $e->getMessage()
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
 }

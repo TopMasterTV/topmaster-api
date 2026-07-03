@@ -89,16 +89,13 @@ try {
         Isso é necessário tanto ao criar um novo aviso ativo quanto ao desativar.
     */
     $stmtDesativar = $pdo->prepare("
-        UPDATE public.avisos_cliente
-        SET ativo = false,
-            atualizado_em = NOW()
-        WHERE ativo = true
-          AND destino = :destino
-    ");
+    UPDATE public.avisos_cliente
+    SET ativo = false,
+        atualizado_em = NOW()
+    WHERE ativo = true
+");
 
-    $stmtDesativar->execute([
-        ':destino' => $destino
-    ]);
+$stmtDesativar->execute();
 
     /*
         Se veio ativo=false, a intenção é só desativar.

@@ -29,16 +29,16 @@ try {
     );
 
     /*
-     * IMPORTANTE:
-     * Usamos SELECT * para evitar erro caso o nome da coluna do link
-     * seja diferente, como link, apk_url, url_apk, link_download etc.
+     * REGRA CORRETA:
+     * Buscar a última configuração salva para esse tipo de app.
+     * Se a última estiver ativa = false, não mostra atualização,
+     * mesmo que exista uma versão anterior ativa no banco.
      */
     $stmt = $pdo->prepare("
         SELECT *
         FROM public.app_updates
         WHERE app_tipo = :app_tipo
-          AND ativa = TRUE
-        ORDER BY version_code DESC, id DESC
+        ORDER BY id DESC
         LIMIT 1
     ");
 
@@ -52,16 +52,29 @@ try {
         echo json_encode([
             "success" => true,
             "tem_atualizacao" => false,
-            "message" => "Nenhuma atualização ativa encontrada.",
+            "message" => "Nenhuma configuração de atualização encontrada.",
             "app_tipo" => $app_tipo
         ]);
         exit;
     }
 
+    $ativa = filter_var($update["ativa"] ?? false, FILTER_VALIDATE_BOOLEAN);
+
     /*
-     * Aqui tentamos descobrir qual é o nome real da coluna do link no banco.
-     * O app continuará recebendo como link_apk.
+     * Se a última configuração estiver desativada,
+     * o aviso precisa parar completamente.
      */
+    if (!$ativa) {
+        echo json_encode([
+            "success" => true,
+            "tem_atualizacao" => false,
+            "message" => "Atualização desativada no painel.",
+            "app_tipo" => $app_tipo,
+            "ativa" => false
+        ]);
+        exit;
+    }
+
     $linkApk =
         $update["link_apk"] ??
         $update["link"] ??
@@ -82,7 +95,7 @@ try {
             "mensagem" => $update["mensagem"] ?? "",
             "link_apk" => $linkApk,
             "obrigatoria" => filter_var($update["obrigatoria"] ?? false, FILTER_VALIDATE_BOOLEAN),
-            "ativa" => filter_var($update["ativa"] ?? false, FILTER_VALIDATE_BOOLEAN),
+            "ativa" => true,
             "criado_em" => $update["criado_em"] ?? null
         ]
     ]);

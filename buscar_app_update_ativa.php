@@ -29,22 +29,12 @@ try {
     );
 
     /*
-     * REGRA PRINCIPAL:
-     * Só pode retornar atualização quando ativa = true.
-     * Se estiver ativa = false, o app não deve receber atualização nenhuma,
-     * mesmo que o version_code seja maior.
+     * IMPORTANTE:
+     * Usamos SELECT * para evitar erro caso o nome da coluna do link
+     * seja diferente, como link, apk_url, url_apk, link_download etc.
      */
     $stmt = $pdo->prepare("
-        SELECT
-            id,
-            app_tipo,
-            versao,
-            version_code,
-            mensagem,
-            link_apk,
-            obrigatoria,
-            ativa,
-            criado_em
+        SELECT *
         FROM public.app_updates
         WHERE app_tipo = :app_tipo
           AND ativa = TRUE
@@ -68,19 +58,32 @@ try {
         exit;
     }
 
+    /*
+     * Aqui tentamos descobrir qual é o nome real da coluna do link no banco.
+     * O app continuará recebendo como link_apk.
+     */
+    $linkApk =
+        $update["link_apk"] ??
+        $update["link"] ??
+        $update["apk_url"] ??
+        $update["url_apk"] ??
+        $update["link_download"] ??
+        $update["download_url"] ??
+        "";
+
     echo json_encode([
         "success" => true,
         "tem_atualizacao" => true,
         "update" => [
-            "id" => (int)$update["id"],
-            "app_tipo" => $update["app_tipo"],
-            "versao" => $update["versao"],
-            "version_code" => (int)$update["version_code"],
-            "mensagem" => $update["mensagem"],
-            "link_apk" => $update["link_apk"],
-            "obrigatoria" => filter_var($update["obrigatoria"], FILTER_VALIDATE_BOOLEAN),
-            "ativa" => filter_var($update["ativa"], FILTER_VALIDATE_BOOLEAN),
-            "criado_em" => $update["criado_em"]
+            "id" => isset($update["id"]) ? (int)$update["id"] : 0,
+            "app_tipo" => $update["app_tipo"] ?? $app_tipo,
+            "versao" => $update["versao"] ?? "",
+            "version_code" => isset($update["version_code"]) ? (int)$update["version_code"] : 0,
+            "mensagem" => $update["mensagem"] ?? "",
+            "link_apk" => $linkApk,
+            "obrigatoria" => filter_var($update["obrigatoria"] ?? false, FILTER_VALIDATE_BOOLEAN),
+            "ativa" => filter_var($update["ativa"] ?? false, FILTER_VALIDATE_BOOLEAN),
+            "criado_em" => $update["criado_em"] ?? null
         ]
     ]);
     exit;

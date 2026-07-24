@@ -61,6 +61,34 @@ function interpretarBooleanoPostgres(mixed $valor): bool
     throw new UnexpectedValueException('Valor booleano inválido');
 }
 
+function obterSslmodeBancoRoku(string $host): string
+{
+    $sslmodeConfigurado = getenv('ROKU_DATABASE_SSLMODE');
+
+    if (
+        $sslmodeConfigurado === false
+        || trim($sslmodeConfigurado) === ''
+    ) {
+        return 'require';
+    }
+
+    $sslmode = strtolower(trim($sslmodeConfigurado));
+
+    if ($sslmode === 'require') {
+        return 'require';
+    }
+
+    if (
+        $sslmode === 'disable'
+        && getenv('ROKU_LOCAL_TEST_MODE') === '1'
+        && $host === '127.0.0.1'
+    ) {
+        return 'disable';
+    }
+
+    throw new RuntimeException('Configuração de banco inválida');
+}
+
 function identificarEnderecoIp(): string
 {
     $encaminhado = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
@@ -413,9 +441,10 @@ try {
     $dbname = ltrim($db['path'], '/');
     $dbUser = rawurldecode($db['user']);
     $dbPass = rawurldecode($db['pass']);
+    $sslmode = obterSslmodeBancoRoku($host);
 
     $pdo = new PDO(
-        "pgsql:host={$host};port={$port};dbname={$dbname};sslmode=require",
+        "pgsql:host={$host};port={$port};dbname={$dbname};sslmode={$sslmode}",
         $dbUser,
         $dbPass,
         [

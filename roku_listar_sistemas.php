@@ -28,6 +28,34 @@ function responderErroRokuSistemas(int $statusHttp, string $codigo, string $mens
     ]);
 }
 
+function obterSslmodeListagemSistemasRoku(string $host): string
+{
+    $sslmodeConfigurado = getenv('ROKU_DATABASE_SSLMODE');
+
+    if (
+        $sslmodeConfigurado === false
+        || trim($sslmodeConfigurado) === ''
+    ) {
+        return 'require';
+    }
+
+    $sslmode = strtolower(trim($sslmodeConfigurado));
+
+    if ($sslmode === 'require') {
+        return 'require';
+    }
+
+    if (
+        $sslmode === 'disable'
+        && getenv('ROKU_LOCAL_TEST_MODE') === '1'
+        && $host === '127.0.0.1'
+    ) {
+        return 'disable';
+    }
+
+    throw new RuntimeException('Configuração de banco inválida');
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
     header('Allow: GET');
     responderErroRokuSistemas(405, 'METHOD_NOT_ALLOWED', 'Método não permitido');
@@ -58,9 +86,10 @@ try {
     $dbname = ltrim($db['path'], '/');
     $dbUser = rawurldecode($db['user']);
     $dbPass = rawurldecode($db['pass']);
+    $sslmode = obterSslmodeListagemSistemasRoku($host);
 
     $pdo = new PDO(
-        "pgsql:host={$host};port={$port};dbname={$dbname};sslmode=require",
+        "pgsql:host={$host};port={$port};dbname={$dbname};sslmode={$sslmode}",
         $dbUser,
         $dbPass,
         [

@@ -4,8 +4,6 @@
 -- As senhas e URLs abaixo são falsas e não pertencem a clientes ou fornecedores reais.
 -- Aplicar somente uma vez em um banco local novo e isolado.
 
-BEGIN;
-
 -- A senha em texto simples é proposital e exclusivamente local para testar
 -- a compatibilidade legada e sua migração automática para password_hash.
 INSERT INTO clientes (
@@ -119,8 +117,6 @@ SELECT setval(
     (SELECT MAX(id) FROM sistemas),
     true
 );
-
-COMMIT;
 
 -- Cliente ativo local:
 -- usuario: cliente_teste_1

@@ -13,6 +13,7 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/roku_token_auth.php';
 require_once __DIR__ . '/roku_sistema_context.php';
 require_once __DIR__ . '/roku_xtream_categories.php';
+require_once __DIR__ . '/roku_xtream_observability.php';
 
 function responderCategoriasRoku(int $statusHttp, array $conteudo): never
 {
@@ -169,6 +170,8 @@ try {
         throw new UnexpectedValueException('Contexto Xtream inválido');
     }
 
+    $requestIdXtream = gerarRequestIdObservabilidadeXtreamRoku();
+    $inicioXtreamNanos = hrtime(true);
     $categorias = obterCategoriasXtreamRoku(
         $contexto['fornecedor_url'],
         $contexto['usuario'],
@@ -196,6 +199,14 @@ try {
     );
 } catch (RokuXtreamException $e) {
     desfazerTransacaoCategoriasRoku($pdo);
+    $duracaoXtreamMs = calcularDuracaoMsObservabilidadeXtreamRoku($inicioXtreamNanos);
+    emitirLinhaObservabilidadeXtreamRoku(
+        $requestIdXtream,
+        $e->getStatusHttp(),
+        $e->getCodigoPublico(),
+        $e->getCategoriaInterna(),
+        $duracaoXtreamMs
+    );
     responderErroCategoriasRoku(
         $e->getStatusHttp(),
         $e->getCodigoPublico(),

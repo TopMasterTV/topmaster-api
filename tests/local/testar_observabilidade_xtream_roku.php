@@ -83,7 +83,10 @@ $categoriasPermitidas = [
     'CURL_DNS_ERROR',
     'CURL_CONNECTION_ERROR',
     'CURL_TLS_ERROR',
-    'PROVIDER_HTTP_NON_2XX',
+    'PROVIDER_HTTP_3XX',
+    'PROVIDER_HTTP_4XX',
+    'PROVIDER_HTTP_5XX',
+    'PROVIDER_HTTP_OTHER',
     'CURL_OTHER_ERROR',
 ];
 
@@ -203,6 +206,18 @@ $valoresFicticiosProibidos = [
     'curl_error_ficticio',
     'errno=987654',
     'provider_http_status=599',
+    'provider_status=301',
+    'upstream_status=302',
+    'redirect_status=307',
+    'redirect_status=308',
+    'provider_status=400',
+    'provider_status=401',
+    'provider_status=403',
+    'provider_status=404',
+    'provider_status=429',
+    'provider_status=500',
+    'provider_status=502',
+    'Location=https://redirect.invalid/path',
 ];
 $linhaComEntradasMaliciosas = montarLinhaObservabilidadeXtreamRoku(
     "id\nmalicioso",
@@ -254,12 +269,24 @@ foreach (array_slice($categoriasPermitidas, 4) as $categoria) {
                 $categoria,
                 0
             );
+            $linhaEsperadaGranular = 'ROKU_XTREAM'
+                . ' endpoint=roku_listar_categorias'
+                . ' request_id=' . $requestIdFixo
+                . ' status=502'
+                . ' code=PROVIDER_UNAVAILABLE'
+                . ' category=' . $categoria
+                . ' duration_ms=0';
+            afirmarIgualObservabilidadeXtreamRoku($linhaEsperadaGranular, $linha);
             afirmarIgualObservabilidadeXtreamRoku(7, count(explode(' ', $linha)));
             afirmarObservabilidadeXtreamRoku(
                 str_contains($linha, ' status=502')
                 && str_contains($linha, ' code=PROVIDER_UNAVAILABLE')
                 && str_contains($linha, ' category=' . $categoria)
                 && str_contains($linha, ' duration_ms=0')
+                && !str_contains($linha, 'provider_status=')
+                && !str_contains($linha, 'upstream_status=')
+                && !str_contains($linha, 'redirect_status=')
+                && !str_contains($linha, 'Location=')
             );
         }
     );

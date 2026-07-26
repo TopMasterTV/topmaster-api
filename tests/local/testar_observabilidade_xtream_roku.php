@@ -84,7 +84,12 @@ $categoriasPermitidas = [
     'CURL_CONNECTION_ERROR',
     'CURL_TLS_ERROR',
     'PROVIDER_HTTP_3XX',
-    'PROVIDER_HTTP_4XX',
+    'PROVIDER_HTTP_400',
+    'PROVIDER_HTTP_401',
+    'PROVIDER_HTTP_403',
+    'PROVIDER_HTTP_404',
+    'PROVIDER_HTTP_429',
+    'PROVIDER_HTTP_4XX_OTHER',
     'PROVIDER_HTTP_5XX',
     'PROVIDER_HTTP_OTHER',
     'CURL_OTHER_ERROR',
@@ -208,6 +213,7 @@ $valoresFicticiosProibidos = [
     'provider_http_status=599',
     'provider_status=301',
     'upstream_status=302',
+    'exact_status=418',
     'redirect_status=307',
     'redirect_status=308',
     'provider_status=400',
@@ -285,6 +291,7 @@ foreach (array_slice($categoriasPermitidas, 4) as $categoria) {
                 && str_contains($linha, ' duration_ms=0')
                 && !str_contains($linha, 'provider_status=')
                 && !str_contains($linha, 'upstream_status=')
+                && !str_contains($linha, 'exact_status=')
                 && !str_contains($linha, 'redirect_status=')
                 && !str_contains($linha, 'Location=')
             );

@@ -263,6 +263,128 @@ foreach ($urlsInvalidas as $indice => $url) {
     );
 }
 
+$casosCategoriaUrl = [
+    ['url' => '', 'categoria' => 'URL_REJECTED'],
+    ['url' => "https://host.invalid/\x01", 'categoria' => 'URL_REJECTED'],
+    ['url' => 'http://[::1', 'categoria' => 'URL_REJECTED'],
+    ['url' => 'ftp://host.invalid', 'categoria' => 'URL_SCHEME_REJECTED'],
+    ['url' => 'https://user:pass@host.invalid', 'categoria' => 'URL_COMPONENT_REJECTED'],
+    ['url' => 'https://host.invalid/base?query=1', 'categoria' => 'URL_COMPONENT_REJECTED'],
+    ['url' => 'https://host.invalid/base#fragment', 'categoria' => 'URL_COMPONENT_REJECTED'],
+    ['url' => 'https://localhost', 'categoria' => 'URL_REJECTED'],
+    ['url' => 'https://host.invalid:70000', 'categoria' => 'URL_REJECTED'],
+    ['url' => 'https://host.invalid/base%2Fother', 'categoria' => 'URL_COMPONENT_REJECTED'],
+    ['url' => 'http://127.1', 'categoria' => 'URL_REJECTED'],
+    ['url' => 'http://127.0.0.1', 'categoria' => 'SSRF_BLOCKED'],
+    ['url' => 'https://-host.invalid', 'categoria' => 'URL_REJECTED'],
+];
+
+foreach ($casosCategoriaUrl as $indice => $caso) {
+    registrarTesteHelperRoku(
+        'Categoria sanitizada de URL ' . ($indice + 1),
+        static function () use ($caso): void {
+            $excecao = afirmarExcecaoHelperRoku(
+                static fn (): array => validarUrlFornecedorRoku($caso['url']),
+                RokuXtreamException::class
+            );
+            afirmarIgualHelperRoku(502, $excecao->getStatusHttp());
+            afirmarIgualHelperRoku('PROVIDER_UNAVAILABLE', $excecao->getCodigoPublico());
+            afirmarIgualHelperRoku(
+                'Não foi possível acessar o sistema',
+                $excecao->getMensagemPublica()
+            );
+            afirmarIgualHelperRoku($caso['categoria'], $excecao->getCategoriaInterna());
+        }
+    );
+}
+
+$casosDnsSinteticosComErro = [
+    ['registros' => false, 'categoria' => 'DNS_NO_RESULTS'],
+    ['registros' => [['type' => 'TXT']], 'categoria' => 'DNS_NO_RESULTS'],
+    ['registros' => [['ip' => '127.0.0.1']], 'categoria' => 'DNS_NON_PUBLIC_IP'],
+];
+
+foreach ($casosDnsSinteticosComErro as $indice => $caso) {
+    registrarTesteHelperRoku(
+        'DNS sintético rejeitado ' . ($indice + 1),
+        static function () use ($caso): void {
+            $excecao = afirmarExcecaoHelperRoku(
+                static fn (): array => resolverHostPublicoRoku(
+                    'host.invalid',
+                    static fn (string $host): mixed => $caso['registros']
+                ),
+                RokuXtreamException::class
+            );
+            afirmarIgualHelperRoku($caso['categoria'], $excecao->getCategoriaInterna());
+        }
+    );
+}
+
+registrarTesteHelperRoku('DNS sintético ordena IPv4 antes de IPv6', static function (): void {
+    $enderecos = resolverHostPublicoRoku(
+        'host.invalid',
+        static fn (string $host): array => [
+            ['ipv6' => '2606:4700:4700::1111'],
+            ['ip' => '8.8.8.8'],
+            ['ip' => '1.1.1.1'],
+        ]
+    );
+    afirmarIgualHelperRoku(['1.1.1.1', '8.8.8.8', '2606:4700:4700::1111'], $enderecos);
+});
+
+$casosErroCurl = [
+    'CURLE_COULDNT_RESOLVE_HOST' => 'CURL_DNS_ERROR',
+    'CURLE_COULDNT_CONNECT' => 'CURL_CONNECTION_ERROR',
+    'CURLE_SEND_ERROR' => 'CURL_CONNECTION_ERROR',
+    'CURLE_RECV_ERROR' => 'CURL_CONNECTION_ERROR',
+    'CURLE_GOT_NOTHING' => 'CURL_CONNECTION_ERROR',
+    'CURLE_SSL_CONNECT_ERROR' => 'CURL_TLS_ERROR',
+    'CURLE_PEER_FAILED_VERIFICATION' => 'CURL_TLS_ERROR',
+    'CURLE_SSL_CERTPROBLEM' => 'CURL_TLS_ERROR',
+    'CURLE_SSL_CIPHER' => 'CURL_TLS_ERROR',
+];
+
+foreach ($casosErroCurl as $nomeConstante => $categoria) {
+    if (!defined($nomeConstante)) {
+        continue;
+    }
+
+    registrarTesteHelperRoku(
+        'Classificação cURL ' . $nomeConstante,
+        static function () use ($nomeConstante, $categoria): void {
+            afirmarIgualHelperRoku(
+                $categoria,
+                classificarErroCurlXtreamRoku((int) constant($nomeConstante))
+            );
+        }
+    );
+}
+
+registrarTesteHelperRoku('Classificação cURL residual', static function (): void {
+    afirmarIgualHelperRoku('CURL_OTHER_ERROR', classificarErroCurlXtreamRoku(PHP_INT_MAX));
+});
+
+$casosStatusHttp = [
+    199 => 'PROVIDER_HTTP_NON_2XX',
+    200 => null,
+    299 => null,
+    300 => 'PROVIDER_HTTP_NON_2XX',
+    401 => 'PROVIDER_HTTP_NON_2XX',
+    500 => 'PROVIDER_HTTP_NON_2XX',
+];
+
+foreach ($casosStatusHttp as $status => $categoria) {
+    registrarTesteHelperRoku(
+        'Classificação HTTP sintética ' . $status,
+        static function () use ($status, $categoria): void {
+            afirmarIgualHelperRoku(
+                $categoria,
+                classificarStatusHttpFornecedorRoku($status)
+            );
+        }
+    );
+}
+
 $casosIdCategoria = [
     ['esperado' => '0', 'valor' => 0],
     ['esperado' => '123', 'valor' => 123],

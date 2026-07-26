@@ -74,6 +74,17 @@ $categoriasPermitidas = [
     'PROVIDER_TIMEOUT',
     'INVALID_RESPONSE',
     'RESPONSE_TOO_LARGE',
+    'URL_REJECTED',
+    'URL_SCHEME_REJECTED',
+    'URL_COMPONENT_REJECTED',
+    'DNS_NO_RESULTS',
+    'DNS_NON_PUBLIC_IP',
+    'SSRF_BLOCKED',
+    'CURL_DNS_ERROR',
+    'CURL_CONNECTION_ERROR',
+    'CURL_TLS_ERROR',
+    'PROVIDER_HTTP_NON_2XX',
+    'CURL_OTHER_ERROR',
 ];
 
 foreach ($categoriasPermitidas as $categoria) {
@@ -183,6 +194,15 @@ $valoresFicticiosProibidos = [
     'Author' . 'ization Bearer ' . str_repeat('b', 64),
     '{"resposta":"bruta-ficticia"}',
     'Could not connect ficticio',
+    'host.invalid',
+    '192.0.2.10',
+    'porta=65535',
+    'token=ficticio',
+    'headers=ficticios',
+    'query=ficticia',
+    'curl_error_ficticio',
+    'errno=987654',
+    'provider_http_status=599',
 ];
 $linhaComEntradasMaliciosas = montarLinhaObservabilidadeXtreamRoku(
     "id\nmalicioso",
@@ -222,6 +242,28 @@ registrarTesteObservabilidadeXtreamRoku('logger não lança', static function ()
     );
     afirmarObservabilidadeXtreamRoku(is_bool($resultado));
 });
+
+foreach (array_slice($categoriasPermitidas, 4) as $categoria) {
+    registrarTesteObservabilidadeXtreamRoku(
+        'formato granular ' . $categoria,
+        static function () use ($requestIdFixo, $categoria): void {
+            $linha = montarLinhaObservabilidadeXtreamRoku(
+                $requestIdFixo,
+                502,
+                'PROVIDER_UNAVAILABLE',
+                $categoria,
+                0
+            );
+            afirmarIgualObservabilidadeXtreamRoku(7, count(explode(' ', $linha)));
+            afirmarObservabilidadeXtreamRoku(
+                str_contains($linha, ' status=502')
+                && str_contains($linha, ' code=PROVIDER_UNAVAILABLE')
+                && str_contains($linha, ' category=' . $categoria)
+                && str_contains($linha, ' duration_ms=0')
+            );
+        }
+    );
+}
 
 $conteudoHelper = (string) file_get_contents(
     dirname(__DIR__, 2) . '/roku_xtream_observability.php'

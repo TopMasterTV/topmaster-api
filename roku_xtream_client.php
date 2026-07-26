@@ -9,6 +9,17 @@ final class RokuXtreamException extends RuntimeException
         'PROVIDER_TIMEOUT',
         'INVALID_RESPONSE',
         'RESPONSE_TOO_LARGE',
+        'URL_REJECTED',
+        'URL_SCHEME_REJECTED',
+        'URL_COMPONENT_REJECTED',
+        'DNS_NO_RESULTS',
+        'DNS_NON_PUBLIC_IP',
+        'SSRF_BLOCKED',
+        'CURL_DNS_ERROR',
+        'CURL_CONNECTION_ERROR',
+        'CURL_TLS_ERROR',
+        'PROVIDER_HTTP_NON_2XX',
+        'CURL_OTHER_ERROR',
     ];
 
     private int $statusHttp;
@@ -214,16 +225,18 @@ function enderecoIpPublicoPermitidoRoku(string $ip): bool
  *
  * @return list<string>
  */
-function resolverHostPublicoRoku(string $host): array
+function resolverHostPublicoRoku(string $host, ?callable $resolverDns = null): array
 {
-    $registros = @dns_get_record($host, DNS_A | DNS_AAAA);
+    $registros = $resolverDns !== null
+        ? $resolverDns($host)
+        : @dns_get_record($host, DNS_A | DNS_AAAA);
 
     if (!is_array($registros)) {
         throw new RokuXtreamException(
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'DNS_NO_RESULTS'
         );
     }
 
@@ -246,7 +259,7 @@ function resolverHostPublicoRoku(string $host): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'DNS_NO_RESULTS'
         );
     }
 
@@ -256,7 +269,7 @@ function resolverHostPublicoRoku(string $host): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'DNS_NON_PUBLIC_IP'
             );
         }
     }
@@ -299,7 +312,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_REJECTED'
         );
     }
 
@@ -310,7 +323,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_REJECTED'
         );
     }
 
@@ -321,7 +334,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_SCHEME_REJECTED'
         );
     }
 
@@ -335,7 +348,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_COMPONENT_REJECTED'
         );
     }
 
@@ -352,7 +365,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_REJECTED'
         );
     }
 
@@ -365,7 +378,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_REJECTED'
         );
     }
 
@@ -394,7 +407,7 @@ function validarUrlFornecedorRoku(string $url): array
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            'URL_COMPONENT_REJECTED'
         );
     }
 
@@ -420,7 +433,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'URL_REJECTED'
             );
         }
 
@@ -429,7 +442,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'SSRF_BLOCKED'
             );
         }
 
@@ -443,7 +456,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'URL_REJECTED'
             );
         }
 
@@ -454,7 +467,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'SSRF_BLOCKED'
             );
         }
 
@@ -465,7 +478,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'URL_REJECTED'
             );
         }
 
@@ -481,7 +494,7 @@ function validarUrlFornecedorRoku(string $url): array
                 502,
                 'PROVIDER_UNAVAILABLE',
                 'Não foi possível acessar o sistema',
-                'PROVIDER_UNAVAILABLE'
+                'URL_REJECTED'
             );
         }
 
@@ -504,6 +517,44 @@ function validarUrlFornecedorRoku(string $url): array
         'ip_resolvido' => $ipResolvido,
         'host_eh_ip_literal' => $hostEhIpLiteral,
     ];
+}
+
+function classificarErroCurlXtreamRoku(int $codigoCurl): string
+{
+    $categoriasPorConstante = [
+        'CURL_DNS_ERROR' => [
+            'CURLE_COULDNT_RESOLVE_HOST',
+        ],
+        'CURL_CONNECTION_ERROR' => [
+            'CURLE_COULDNT_CONNECT',
+            'CURLE_SEND_ERROR',
+            'CURLE_RECV_ERROR',
+            'CURLE_GOT_NOTHING',
+        ],
+        'CURL_TLS_ERROR' => [
+            'CURLE_SSL_CONNECT_ERROR',
+            'CURLE_PEER_FAILED_VERIFICATION',
+            'CURLE_SSL_CERTPROBLEM',
+            'CURLE_SSL_CIPHER',
+        ],
+    ];
+
+    foreach ($categoriasPorConstante as $categoria => $nomesConstantes) {
+        foreach ($nomesConstantes as $nomeConstante) {
+            if (defined($nomeConstante) && $codigoCurl === constant($nomeConstante)) {
+                return $categoria;
+            }
+        }
+    }
+
+    return 'CURL_OTHER_ERROR';
+}
+
+function classificarStatusHttpFornecedorRoku(int $codigoHttp): ?string
+{
+    return $codigoHttp >= 200 && $codigoHttp <= 299
+        ? null
+        : 'PROVIDER_HTTP_NON_2XX';
 }
 
 /**
@@ -667,16 +718,18 @@ function requisitarJsonXtreamRoku(
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            classificarErroCurlXtreamRoku($codigoCurl)
         );
     }
 
-    if ($codigoHttp < 200 || $codigoHttp > 299) {
+    $categoriaErroHttp = classificarStatusHttpFornecedorRoku($codigoHttp);
+
+    if ($categoriaErroHttp !== null) {
         throw new RokuXtreamException(
             502,
             'PROVIDER_UNAVAILABLE',
             'Não foi possível acessar o sistema',
-            'PROVIDER_UNAVAILABLE'
+            $categoriaErroHttp
         );
     }
 

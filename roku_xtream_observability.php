@@ -40,6 +40,17 @@ function normalizarCategoriaInternaObservabilidadeXtreamRoku(string $categoria):
         'PROVIDER_TIMEOUT',
         'INVALID_RESPONSE',
         'RESPONSE_TOO_LARGE',
+        'URL_REJECTED',
+        'URL_SCHEME_REJECTED',
+        'URL_COMPONENT_REJECTED',
+        'DNS_NO_RESULTS',
+        'DNS_NON_PUBLIC_IP',
+        'SSRF_BLOCKED',
+        'CURL_DNS_ERROR',
+        'CURL_CONNECTION_ERROR',
+        'CURL_TLS_ERROR',
+        'PROVIDER_HTTP_NON_2XX',
+        'CURL_OTHER_ERROR',
     ];
 
     return in_array($categoria, $permitidas, true)

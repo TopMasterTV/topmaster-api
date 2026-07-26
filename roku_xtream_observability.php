@@ -49,7 +49,10 @@ function normalizarCategoriaInternaObservabilidadeXtreamRoku(string $categoria):
         'CURL_DNS_ERROR',
         'CURL_CONNECTION_ERROR',
         'CURL_TLS_ERROR',
-        'PROVIDER_HTTP_NON_2XX',
+        'PROVIDER_HTTP_3XX',
+        'PROVIDER_HTTP_4XX',
+        'PROVIDER_HTTP_5XX',
+        'PROVIDER_HTTP_OTHER',
         'CURL_OTHER_ERROR',
     ];
 

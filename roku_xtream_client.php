@@ -18,7 +18,10 @@ final class RokuXtreamException extends RuntimeException
         'CURL_DNS_ERROR',
         'CURL_CONNECTION_ERROR',
         'CURL_TLS_ERROR',
-        'PROVIDER_HTTP_NON_2XX',
+        'PROVIDER_HTTP_3XX',
+        'PROVIDER_HTTP_4XX',
+        'PROVIDER_HTTP_5XX',
+        'PROVIDER_HTTP_OTHER',
         'CURL_OTHER_ERROR',
     ];
 
@@ -552,9 +555,23 @@ function classificarErroCurlXtreamRoku(int $codigoCurl): string
 
 function classificarStatusHttpFornecedorRoku(int $codigoHttp): ?string
 {
-    return $codigoHttp >= 200 && $codigoHttp <= 299
-        ? null
-        : 'PROVIDER_HTTP_NON_2XX';
+    if ($codigoHttp >= 200 && $codigoHttp <= 299) {
+        return null;
+    }
+
+    if ($codigoHttp >= 300 && $codigoHttp <= 399) {
+        return 'PROVIDER_HTTP_3XX';
+    }
+
+    if ($codigoHttp >= 400 && $codigoHttp <= 499) {
+        return 'PROVIDER_HTTP_4XX';
+    }
+
+    if ($codigoHttp >= 500 && $codigoHttp <= 599) {
+        return 'PROVIDER_HTTP_5XX';
+    }
+
+    return 'PROVIDER_HTTP_OTHER';
 }
 
 /**

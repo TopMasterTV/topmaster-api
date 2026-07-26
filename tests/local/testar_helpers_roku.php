@@ -365,12 +365,28 @@ registrarTesteHelperRoku('Classificação cURL residual', static function (): vo
 });
 
 $casosStatusHttp = [
-    199 => 'PROVIDER_HTTP_NON_2XX',
+    -1 => 'PROVIDER_HTTP_OTHER',
+    0 => 'PROVIDER_HTTP_OTHER',
+    99 => 'PROVIDER_HTTP_OTHER',
+    100 => 'PROVIDER_HTTP_OTHER',
+    199 => 'PROVIDER_HTTP_OTHER',
     200 => null,
+    201 => null,
     299 => null,
-    300 => 'PROVIDER_HTTP_NON_2XX',
-    401 => 'PROVIDER_HTTP_NON_2XX',
-    500 => 'PROVIDER_HTTP_NON_2XX',
+    300 => 'PROVIDER_HTTP_3XX',
+    301 => 'PROVIDER_HTTP_3XX',
+    399 => 'PROVIDER_HTTP_3XX',
+    400 => 'PROVIDER_HTTP_4XX',
+    401 => 'PROVIDER_HTTP_4XX',
+    403 => 'PROVIDER_HTTP_4XX',
+    404 => 'PROVIDER_HTTP_4XX',
+    429 => 'PROVIDER_HTTP_4XX',
+    499 => 'PROVIDER_HTTP_4XX',
+    500 => 'PROVIDER_HTTP_5XX',
+    502 => 'PROVIDER_HTTP_5XX',
+    599 => 'PROVIDER_HTTP_5XX',
+    600 => 'PROVIDER_HTTP_OTHER',
+    999 => 'PROVIDER_HTTP_OTHER',
 ];
 
 foreach ($casosStatusHttp as $status => $categoria) {
@@ -381,6 +397,34 @@ foreach ($casosStatusHttp as $status => $categoria) {
                 $categoria,
                 classificarStatusHttpFornecedorRoku($status)
             );
+        }
+    );
+}
+
+$categoriasHttpFornecedor = [
+    'PROVIDER_HTTP_3XX',
+    'PROVIDER_HTTP_4XX',
+    'PROVIDER_HTTP_5XX',
+    'PROVIDER_HTTP_OTHER',
+];
+
+foreach ($categoriasHttpFornecedor as $categoria) {
+    registrarTesteHelperRoku(
+        'Contrato público da categoria HTTP ' . $categoria,
+        static function () use ($categoria): void {
+            $excecao = new RokuXtreamException(
+                502,
+                'PROVIDER_UNAVAILABLE',
+                'Não foi possível acessar o sistema',
+                $categoria
+            );
+            afirmarIgualHelperRoku(502, $excecao->getStatusHttp());
+            afirmarIgualHelperRoku('PROVIDER_UNAVAILABLE', $excecao->getCodigoPublico());
+            afirmarIgualHelperRoku(
+                'Não foi possível acessar o sistema',
+                $excecao->getMensagemPublica()
+            );
+            afirmarIgualHelperRoku($categoria, $excecao->getCategoriaInterna());
         }
     );
 }

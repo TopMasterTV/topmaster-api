@@ -190,6 +190,31 @@ final readonly class RokuAudioFallbackSessionRecord
         return $this->internalSessionId;
     }
 
+    public function getClienteId(): int
+    {
+        return $this->clienteId;
+    }
+
+    public function getSistemaId(): int
+    {
+        return $this->sistemaId;
+    }
+
+    public function getStreamId(): string
+    {
+        return $this->streamId;
+    }
+
+    public function getExtension(): string
+    {
+        return $this->extension;
+    }
+
+    public function getFallbackKind(): string
+    {
+        return $this->fallbackKind;
+    }
+
     public function getStatus(): string
     {
         return $this->status;

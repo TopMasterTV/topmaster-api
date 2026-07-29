@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/roku_audio_fallback_repository.php';
+require_once dirname(__DIR__) . '/roku_audio_fallback_idempotency.php';
 
 final class RokuAudioFallbackRepositoryTestExecutor implements RokuAudioFallbackQueryExecutor
 {
@@ -164,7 +165,169 @@ try {
     roku_audio_fallback_repository_test_require($reflection->isReadOnly());
     foreach ($reflection->getProperties() as $property) {
         roku_audio_fallback_repository_test_require($property->isReadOnly());
+        roku_audio_fallback_repository_test_require(!$property->isPublic());
     }
+    foreach ([
+        'getPublicTokenHash', 'publicTokenHash', 'tokenHash', 'getDatabaseId',
+        'getRow', 'getRawRow', 'toArray', 'jsonSerialize', '__toString',
+        '__debugInfo', '__get', '__set',
+    ] as $forbiddenMethod) {
+        roku_audio_fallback_repository_test_require(!$reflection->hasMethod($forbiddenMethod));
+    }
+    foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+        roku_audio_fallback_repository_test_require(
+            !str_starts_with(strtolower($method->getName()), 'set')
+        );
+    }
+
+    $derivationSecret = 'TEST_ONLY_DO_NOT_USE__DERIVATION_SECRET_32_BYTES';
+    $requestId = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+    $otherRequestId = 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
+    $derived = RokuAudioFallbackIdempotency::derivar(
+        101,
+        202,
+        'synthetic_stream_1',
+        'MP4',
+        $requestId,
+        $derivationSecret
+    );
+    $serviceExecutor = new RokuAudioFallbackRepositoryTestExecutor();
+    $serviceExecutor->row = roku_audio_fallback_repository_test_row([
+        'internal_session_id' => $derived['internal_session_id'],
+        'public_token_hash' => $derived['public_token_hash'],
+        'extensao_sanitizada' => $derived['extension'],
+    ]);
+    $serviceRepository = new RokuAudioFallbackRepository($serviceExecutor);
+    $serviceRecord = $serviceRepository->findByInternalSessionId(
+        $derived['internal_session_id']
+    );
+    roku_audio_fallback_repository_test_require(
+        $serviceRecord instanceof RokuAudioFallbackSessionRecord
+    );
+
+    $clienteId = $serviceRecord->getClienteId();
+    $sistemaId = $serviceRecord->getSistemaId();
+    $streamId = $serviceRecord->getStreamId();
+    $extension = $serviceRecord->getExtension();
+    $fallbackKind = $serviceRecord->getFallbackKind();
+    roku_audio_fallback_repository_test_require(is_int($clienteId) && $clienteId === 101);
+    roku_audio_fallback_repository_test_require(is_int($sistemaId) && $sistemaId === 202);
+    roku_audio_fallback_repository_test_require(
+        is_string($streamId) && $streamId === 'synthetic_stream_1'
+    );
+    roku_audio_fallback_repository_test_require(
+        is_string($extension) && $extension === 'mp4'
+    );
+    roku_audio_fallback_repository_test_require(
+        is_string($fallbackKind) && $fallbackKind === 'vod_audio_stereo'
+    );
+    roku_audio_fallback_repository_test_require($serviceRecord->getClienteId() === $clienteId);
+    roku_audio_fallback_repository_test_require($serviceRecord->getSistemaId() === $sistemaId);
+    roku_audio_fallback_repository_test_require($serviceRecord->getStreamId() === $streamId);
+    roku_audio_fallback_repository_test_require($serviceRecord->getExtension() === $extension);
+    roku_audio_fallback_repository_test_require(
+        $serviceRecord->getFallbackKind() === $fallbackKind
+    );
+
+    $reconstructed = RokuAudioFallbackIdempotency::derivar(
+        $clienteId,
+        $sistemaId,
+        $streamId,
+        $extension,
+        $requestId,
+        $derivationSecret
+    );
+    roku_audio_fallback_repository_test_require(
+        $reconstructed['internal_session_id'] === $serviceRecord->getInternalSessionId()
+    );
+    roku_audio_fallback_repository_test_require(
+        $serviceRecord->matchesExpectedAttempt(
+            $clienteId,
+            $sistemaId,
+            $streamId,
+            $extension,
+            $fallbackKind,
+            $reconstructed['public_token_hash']
+        )
+    );
+    $syntheticPlaybackUrl = 'https://transcoder.example.invalid/media/'
+        . $reconstructed['public_token'] . '/index.m3u8';
+    roku_audio_fallback_repository_test_require(
+        str_starts_with($syntheticPlaybackUrl, 'https://transcoder.example.invalid/media/')
+        && str_ends_with($syntheticPlaybackUrl, '/index.m3u8')
+    );
+
+    $wrongRequest = RokuAudioFallbackIdempotency::derivar(
+        $clienteId,
+        $sistemaId,
+        $streamId,
+        $extension,
+        $otherRequestId,
+        $derivationSecret
+    );
+    roku_audio_fallback_repository_test_require(
+        $wrongRequest['internal_session_id'] !== $reconstructed['internal_session_id']
+        && $wrongRequest['public_token'] !== $reconstructed['public_token']
+        && $wrongRequest['public_token_hash'] !== $reconstructed['public_token_hash']
+        && $wrongRequest['internal_session_id'] !== $serviceRecord->getInternalSessionId()
+    );
+    roku_audio_fallback_repository_test_require(
+        !$serviceRecord->matchesExpectedAttempt(
+            $clienteId,
+            $sistemaId,
+            $streamId,
+            $extension,
+            $fallbackKind,
+            $wrongRequest['public_token_hash']
+        )
+    );
+
+    foreach ([
+        [$clienteId + 1, $sistemaId, $streamId, $extension],
+        [$clienteId, $sistemaId + 1, $streamId, $extension],
+        [$clienteId, $sistemaId, $streamId . '_changed', $extension],
+        [$clienteId, $sistemaId, $streamId, 'mkv'],
+    ] as [$changedCliente, $changedSistema, $changedStream, $changedExtension]) {
+        $changed = RokuAudioFallbackIdempotency::derivar(
+            $changedCliente,
+            $changedSistema,
+            $changedStream,
+            $changedExtension,
+            $requestId,
+            $derivationSecret
+        );
+        roku_audio_fallback_repository_test_require(
+            $changed['internal_session_id'] !== $reconstructed['internal_session_id']
+            && $changed['public_token_hash'] !== $reconstructed['public_token_hash']
+        );
+        roku_audio_fallback_repository_test_require(
+            !$serviceRecord->matchesExpectedAttempt(
+                $changedCliente,
+                $changedSistema,
+                $changedStream,
+                $changed['extension'],
+                $fallbackKind,
+                $changed['public_token_hash']
+            )
+        );
+    }
+    roku_audio_fallback_repository_test_require(
+        !$serviceRecord->matchesExpectedAttempt(
+            $clienteId,
+            $sistemaId,
+            $streamId,
+            $extension,
+            'synthetic_other_kind',
+            $reconstructed['public_token_hash']
+        )
+    );
+    roku_audio_fallback_repository_test_require(
+        $serviceRecord->getClienteId() === $clienteId
+        && $serviceRecord->getSistemaId() === $sistemaId
+        && $serviceRecord->getStreamId() === $streamId
+        && $serviceRecord->getExtension() === $extension
+        && $serviceRecord->getFallbackKind() === $fallbackKind
+    );
 
     $validRow = roku_audio_fallback_repository_test_row();
     $invalidRows = [];

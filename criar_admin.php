@@ -39,9 +39,10 @@ try {
         'message' => 'Admin funcionário criado com sucesso'
     ]);
 } catch (PDOException $e) {
+    http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => 'Erro ao criar admin',
-        'erro' => $e->getMessage()
+        'erro' => 'CRIAR_ADMIN_INTERNAL_ERROR'
     ]);
 }

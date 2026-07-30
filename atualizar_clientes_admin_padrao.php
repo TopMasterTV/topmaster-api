@@ -19,9 +19,10 @@ try {
     ]);
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
         "message" => "Erro ao atualizar clientes",
-        "error"   => $e->getMessage()
+        "error"   => "ATUALIZAR_CLIENTES_ADMIN_PADRAO_INTERNAL_ERROR"
     ]);
 }

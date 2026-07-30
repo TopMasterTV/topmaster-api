@@ -46,8 +46,9 @@ try {
     ]);
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
-        "message" => $e->getMessage()
+        "message" => "CRIAR_TABELA_ADMINS_INTERNAL_ERROR"
     ]);
 }

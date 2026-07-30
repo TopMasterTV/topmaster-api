@@ -57,9 +57,10 @@ try {
     ));
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode(array(
         "success" => false,
         "message" => "Erro ao criar tabela",
-        "erro" => $e->getMessage()
+        "erro" => "CRIAR_TABELA_CLIENTES_INTERNAL_ERROR"
     ));
 }

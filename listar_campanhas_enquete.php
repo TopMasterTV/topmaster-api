@@ -97,9 +97,10 @@ try {
     ], JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
         "message" => "Erro ao listar campanhas",
-        "error" => $e->getMessage()
+        "error" => "LISTAR_CAMPANHAS_ENQUETE_INTERNAL_ERROR"
     ], JSON_UNESCAPED_UNICODE);
 }

@@ -42,10 +42,11 @@ try {
     ]);
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
         "message" => "Erro ao buscar configurações",
-        "error" => $e->getMessage()
+        "error" => "GET_CONFIG_APP_INTERNAL_ERROR"
     ]);
 }
 ?>

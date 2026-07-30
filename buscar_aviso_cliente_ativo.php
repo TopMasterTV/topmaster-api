@@ -64,9 +64,10 @@ try {
     ]);
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
         "message" => "Erro ao buscar aviso",
-        "error" => $e->getMessage()
+        "error" => "BUSCAR_AVISO_CLIENTE_ATIVO_INTERNAL_ERROR"
     ]);
 }

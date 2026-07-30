@@ -102,10 +102,11 @@ try {
     exit;
 
 } catch (Exception $e) {
+    http_response_code(500);
     echo json_encode([
         "success" => false,
         "tem_atualizacao" => false,
-        "message" => "Erro ao buscar atualização: " . $e->getMessage()
+        "message" => "BUSCAR_APP_UPDATE_ATIVA_INTERNAL_ERROR"
     ]);
     exit;
 }

@@ -16,19 +16,19 @@ BEGIN
     END IF;
 
     SELECT
-        data_type,
-        character_maximum_length,
-        is_nullable,
-        column_default
+        cols.data_type,
+        cols.character_maximum_length,
+        cols.is_nullable,
+        cols.column_default
     INTO
         column_data_type,
         column_maximum_length,
         column_is_nullable,
         column_default
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'roku_audio_fallback_sessions'
-      AND column_name = 'internal_session_id';
+    FROM information_schema.columns AS cols
+    WHERE cols.table_schema = 'public'
+      AND cols.table_name = 'roku_audio_fallback_sessions'
+      AND cols.column_name = 'internal_session_id';
 
     IF NOT FOUND THEN
         ALTER TABLE public.roku_audio_fallback_sessions

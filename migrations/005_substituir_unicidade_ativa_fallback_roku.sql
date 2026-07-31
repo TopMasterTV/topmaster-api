@@ -56,7 +56,7 @@ BEGIN
           AND i.indnkeyatts = 4
           AND i.indnatts = 4
           AND ARRAY(
-              SELECT a.attname
+              SELECT a.attname::text
               FROM unnest(i.indkey::SMALLINT[]) WITH ORDINALITY AS key(attnum, position)
               INNER JOIN pg_catalog.pg_attribute AS a
                   ON a.attrelid = i.indrelid
@@ -73,7 +73,17 @@ BEGIN
               '[[:space:]()]',
               '',
               'g'
-          ) = expected_predicate
+          ) = regexp_replace(
+              regexp_replace(
+                  lower(expected_predicate),
+                  '::(character varying|text)(\[\])?',
+                  '',
+                  'g'
+              ),
+              '[[:space:]()]',
+              '',
+              'g'
+          )
     ) THEN
         RAISE EXCEPTION USING
             ERRCODE = 'P0001',
@@ -97,7 +107,7 @@ BEGIN
           AND i.indnkeyatts = 4
           AND i.indnatts = 4
           AND ARRAY(
-              SELECT a.attname
+              SELECT a.attname::text
               FROM unnest(i.indkey::SMALLINT[]) WITH ORDINALITY AS key(attnum, position)
               INNER JOIN pg_catalog.pg_attribute AS a
                   ON a.attrelid = i.indrelid
@@ -114,7 +124,17 @@ BEGIN
               '[[:space:]()]',
               '',
               'g'
-          ) = expected_predicate
+          ) = regexp_replace(
+              regexp_replace(
+                  lower(expected_predicate),
+                  '::(character varying|text)(\[\])?',
+                  '',
+                  'g'
+              ),
+              '[[:space:]()]',
+              '',
+              'g'
+          )
     ) THEN
         RAISE EXCEPTION USING
             ERRCODE = 'P0001',
@@ -176,7 +196,7 @@ BEGIN
           AND i.indnkeyatts = 4
           AND i.indnatts = 4
           AND ARRAY(
-              SELECT a.attname
+              SELECT a.attname::text
               FROM unnest(i.indkey::SMALLINT[]) WITH ORDINALITY AS key(attnum, position)
               INNER JOIN pg_catalog.pg_attribute AS a
                   ON a.attrelid = i.indrelid
@@ -193,7 +213,17 @@ BEGIN
               '[[:space:]()]',
               '',
               'g'
-          ) = expected_predicate
+          ) = regexp_replace(
+              regexp_replace(
+                  lower(expected_predicate),
+                  '::(character varying|text)(\[\])?',
+                  '',
+                  'g'
+              ),
+              '[[:space:]()]',
+              '',
+              'g'
+          )
     ) THEN
         RAISE EXCEPTION USING
             ERRCODE = 'P0001',

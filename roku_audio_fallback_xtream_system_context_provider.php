@@ -64,6 +64,9 @@ SQL;
         self::validateId($clienteId);
         self::validateId($sistemaId);
 
+        // Instrumentação temporária para diagnóstico do provider Xtream do fallback Roku.
+        // Remover antes da versão final de produção.
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_QUERY_STARTED');
         try {
             $row = $this->executor->fetchOne(
                 self::FIND_OWNED_CONTEXT_SQL,
@@ -77,23 +80,82 @@ SQL;
                 ]
             );
         } catch (Throwable) {
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_QUERY_FAILED');
             throw new RokuAudioFallbackXtreamSystemContextProviderException(
                 'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_DATABASE_FAILED'
             );
         }
 
         if ($row === null) {
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_QUERY_EMPTY');
             return null;
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_ROW_FOUND');
 
         try {
-            $rowClienteId = self::parseDatabaseId($row, 'cliente_id');
-            $rowSistemaId = self::parseDatabaseId($row, 'sistema_id');
-            $active = self::parseDatabaseBoolean($row, 'active');
-            $accessType = self::parseDatabaseString($row, 'access_type');
-            $baseUrl = self::parseDatabaseString($row, 'base_url');
-            $username = self::parseDatabaseString($row, 'username');
-            $password = self::parseDatabaseString($row, 'password');
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_CLIENT_ID_PARSE_STARTED');
+            try {
+                $rowClienteId = self::parseDatabaseId($row, 'cliente_id');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_CLIENT_ID');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_CLIENT_ID_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_SYSTEM_ID_PARSE_STARTED');
+            try {
+                $rowSistemaId = self::parseDatabaseId($row, 'sistema_id');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_SYSTEM_ID');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_SYSTEM_ID_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_ACTIVE_PARSE_STARTED');
+            try {
+                $active = self::parseDatabaseBoolean($row, 'active');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_ACTIVE');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_ACTIVE_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_ACCESS_TYPE_PARSE_STARTED');
+            try {
+                $accessType = self::parseDatabaseString($row, 'access_type');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_ACCESS_TYPE');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_ACCESS_TYPE_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_BASE_URL_PARSE_STARTED');
+            try {
+                $baseUrl = self::parseDatabaseString($row, 'base_url');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_BASE_URL');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_BASE_URL_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_USERNAME_PARSE_STARTED');
+            try {
+                $username = self::parseDatabaseString($row, 'username');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_USERNAME');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_USERNAME_OK');
+
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_PASSWORD_PARSE_STARTED');
+            try {
+                $password = self::parseDatabaseString($row, 'password');
+            } catch (Throwable $exception) {
+                self::logSourceStage('FALLBACK_SOURCE_STAGE=FAILED_ROW_PASSWORD');
+                throw $exception;
+            }
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=FIELD_PASSWORD_OK');
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_ROW_PARSED');
 
             if ($rowClienteId !== $clienteId || $rowSistemaId !== $sistemaId) {
                 throw new RokuAudioFallbackXtreamSystemContextProviderException(
@@ -109,7 +171,7 @@ SQL;
         }
 
         try {
-            return new RokuAudioFallbackXtreamSystemContext(
+            $context = new RokuAudioFallbackXtreamSystemContext(
                 $rowClienteId,
                 $rowSistemaId,
                 $baseUrl,
@@ -123,6 +185,13 @@ SQL;
                 'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_CONTEXT'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_OBJECT_READY');
+        return $context;
+    }
+
+    private static function logSourceStage(string $message): void
+    {
+        error_log($message);
     }
 
     private static function validateId(mixed $value): void

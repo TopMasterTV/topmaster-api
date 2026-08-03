@@ -196,20 +196,38 @@ final class RokuAudioFallbackXtreamSourceResolver implements RokuAudioFallbackSo
         self::validateStreamId($streamId);
         self::validateExtension($extension);
 
+        // Instrumentação temporária para diagnóstico do provider Xtream do fallback Roku.
+        // Remover antes da versão final de produção.
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=PROVIDER_CALL_STARTED');
         try {
             $context = $this->provider->getOwnedXtreamContext($clienteId, $sistemaId);
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=PROVIDER_CALL_SUCCEEDED');
         } catch (RokuAudioFallbackXtreamSourceResolverException $exception) {
+            self::logSourceStage(
+                'FALLBACK_SOURCE_STAGE=PROVIDER_FAILED INTERNAL_CODE=PROVIDER_INTERNAL_ERROR'
+            );
+            throw $exception;
+        } catch (RokuAudioFallbackXtreamSystemContextProviderException $exception) {
+            self::logSourceStage(
+                'FALLBACK_SOURCE_STAGE=PROVIDER_FAILED INTERNAL_CODE=' .
+                self::sanitizeProviderCode($exception)
+            );
             throw $exception;
         } catch (Throwable) {
+            self::logSourceStage(
+                'FALLBACK_SOURCE_STAGE=PROVIDER_FAILED INTERNAL_CODE=PROVIDER_INTERNAL_ERROR'
+            );
             throw new RokuAudioFallbackXtreamSourceResolverException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_INTERNAL_FAILED'
             );
         }
         if ($context === null) {
+            self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_NOT_FOUND');
             throw new RokuAudioFallbackXtreamSourceResolverException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_NOT_FOUND'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_FOUND');
         if (
             $context->getClienteId() !== $clienteId
             || $context->getSistemaId() !== $sistemaId
@@ -218,25 +236,52 @@ final class RokuAudioFallbackXtreamSourceResolver implements RokuAudioFallbackSo
                 'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_CONTEXT'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=CONTEXT_VALID');
         if (!$context->isActive()) {
             throw new RokuAudioFallbackXtreamSourceResolverException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_INACTIVE'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=STATUS_VALID');
         if (!$context->isXtream()) {
             throw new RokuAudioFallbackXtreamSourceResolverException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_UNSUPPORTED'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=TYPE_VALID');
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=SOURCE_BUILD_STARTED');
         try {
-            return $context->buildVodSourceUrl($streamId, $extension);
+            $sourceUrl = $context->buildVodSourceUrl($streamId, $extension);
         } catch (RokuAudioFallbackXtreamSourceResolverException $exception) {
             throw $exception;
         } catch (Throwable) {
+            self::logSourceStage(
+                'FALLBACK_SOURCE_STAGE=SOURCE_BUILD_FAILED INTERNAL_CODE=SOURCE_BUILD_INTERNAL_ERROR'
+            );
             throw new RokuAudioFallbackXtreamSourceResolverException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_INTERNAL_FAILED'
             );
         }
+        self::logSourceStage('FALLBACK_SOURCE_STAGE=SOURCE_BUILT');
+        return $sourceUrl;
+    }
+
+    private static function logSourceStage(string $message): void
+    {
+        error_log($message);
+    }
+
+    private static function sanitizeProviderCode(
+        RokuAudioFallbackXtreamSystemContextProviderException $exception
+    ): string {
+        $allowed = [
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_ARGUMENT',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_DATABASE_FAILED',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_ROW',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_CONTEXT',
+        ];
+        $code = $exception->getMessage();
+        return in_array($code, $allowed, true) ? $code : 'PROVIDER_INTERNAL_ERROR';
     }
 
     private static function validateId(mixed $value): void

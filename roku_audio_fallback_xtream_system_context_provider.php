@@ -241,8 +241,8 @@ SQL;
             self::throwInvalidRow();
         }
         return match ($row[$column]) {
-            true, 't' => true,
-            false, 'f' => false,
+            true, 1, '1', 't', 'true' => true,
+            false, 0, '0', 'f', 'false', null => false,
             default => self::throwInvalidRow(),
         };
     }

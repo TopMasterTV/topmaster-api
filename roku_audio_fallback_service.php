@@ -219,7 +219,7 @@ final class RokuAudioFallbackService
 
         $existing = $this->findById($internalId);
         if ($existing !== null) {
-            return $this->resultFromRecord(
+            $result = $this->resultFromRecord(
                 $existing,
                 $derived,
                 $internalId,
@@ -227,8 +227,15 @@ final class RokuAudioFallbackService
                 $sistemaId,
                 $streamId
             );
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SESSION_ACCEPTED PUBLIC_STATUS=' . $result->getStatus()
+            );
+            return $result;
         }
 
+        // Instrumentação temporária para diagnóstico controlado do fallback Roku.
+        // Remover antes do commit final de produção.
+        self::logCreateDiagnostic('FALLBACK_CREATE_STAGE=SOURCE_RESOLUTION_STARTED');
         try {
             $sourceUrl = $this->sourceResolver->resolve(
                 $clienteId,
@@ -236,16 +243,24 @@ final class RokuAudioFallbackService
                 $streamId,
                 $derived['extension']
             );
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SOURCE_RESOLUTION_FAILED INTERNAL_CODE=' .
+                self::sanitizedSourceCode($exception)
+            );
             throw new RokuAudioFallbackServiceException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_FAILED'
             );
         }
         if (!is_string($sourceUrl) || $sourceUrl === '') {
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SOURCE_RESOLUTION_FAILED INTERNAL_CODE=SOURCE_RESULT_INVALID'
+            );
             throw new RokuAudioFallbackServiceException(
                 'ROKU_AUDIO_FALLBACK_SOURCE_FAILED'
             );
         }
+        self::logCreateDiagnostic('FALLBACK_CREATE_STAGE=SOURCE_RESOLVED');
 
         $now = ($this->clock)();
         if (!is_int($now) || $now < 1 || $now > PHP_INT_MAX - $this->ttl) {
@@ -265,10 +280,23 @@ final class RokuAudioFallbackService
             $expiresAt,
         ];
 
+        self::logCreateDiagnostic('FALLBACK_CREATE_STAGE=TRANSCODER_CALL_STARTED');
         try {
             $response = $this->gateway->createSession(...$arguments);
-            return $this->resultFromUpstream($response, $internalId, $derived['public_token']);
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=TRANSCODER_CALL_SUCCEEDED HTTP_STATUS=202'
+            );
+            $result = $this->resultFromUpstream(
+                $response,
+                $internalId,
+                $derived['public_token']
+            );
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SESSION_ACCEPTED PUBLIC_STATUS=' . $result->getStatus()
+            );
+            return $result;
         } catch (RokuTranscoderClientException $exception) {
+            self::logTranscoderCreateFailure($exception);
             if (!in_array($exception->getMessage(), self::INDETERMINATE_CLIENT_CODES, true)) {
                 throw self::mapClientException($exception);
             }
@@ -282,7 +310,7 @@ final class RokuAudioFallbackService
 
         $reconciled = $this->findById($internalId);
         if ($reconciled !== null) {
-            return $this->resultFromRecord(
+            $result = $this->resultFromRecord(
                 $reconciled,
                 $derived,
                 $internalId,
@@ -290,12 +318,29 @@ final class RokuAudioFallbackService
                 $sistemaId,
                 $streamId
             );
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SESSION_ACCEPTED PUBLIC_STATUS=' . $result->getStatus()
+            );
+            return $result;
         }
 
+        self::logCreateDiagnostic('FALLBACK_CREATE_STAGE=TRANSCODER_CALL_STARTED');
         try {
             $response = $this->gateway->createSession(...$arguments);
-            return $this->resultFromUpstream($response, $internalId, $derived['public_token']);
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=TRANSCODER_CALL_SUCCEEDED HTTP_STATUS=202'
+            );
+            $result = $this->resultFromUpstream(
+                $response,
+                $internalId,
+                $derived['public_token']
+            );
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=SESSION_ACCEPTED PUBLIC_STATUS=' . $result->getStatus()
+            );
+            return $result;
         } catch (RokuTranscoderClientException $exception) {
+            self::logTranscoderCreateFailure($exception);
             if (
                 $exception->getMessage() !== 'ROKU_TRANSCODER_CLIENT_CONFLICT'
                 && !in_array(
@@ -328,6 +373,75 @@ final class RokuAudioFallbackService
         throw new RokuAudioFallbackServiceException(
             'ROKU_AUDIO_FALLBACK_RESULT_INDETERMINATE'
         );
+    }
+
+    private static function logCreateDiagnostic(string $message): void
+    {
+        error_log($message);
+    }
+
+    private static function sanitizedSourceCode(Throwable $exception): string
+    {
+        $allowed = [
+            'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_ARGUMENT',
+            'ROKU_AUDIO_FALLBACK_SOURCE_NOT_FOUND',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INACTIVE',
+            'ROKU_AUDIO_FALLBACK_SOURCE_UNSUPPORTED',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_CONTEXT',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_BASE_URL',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_CREDENTIALS',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INVALID_URL',
+            'ROKU_AUDIO_FALLBACK_SOURCE_INTERNAL_FAILED',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_ARGUMENT',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_DATABASE_FAILED',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_ROW',
+            'ROKU_AUDIO_FALLBACK_XTREAM_PROVIDER_INVALID_CONTEXT',
+        ];
+        $code = $exception->getMessage();
+        return in_array($code, $allowed, true) ? $code : 'SOURCE_INTERNAL_ERROR';
+    }
+
+    private static function logTranscoderCreateFailure(
+        RokuTranscoderClientException $exception
+    ): void {
+        $status = $exception->getUpstreamStatus();
+        $code = self::sanitizedTranscoderCode($exception);
+        if ($status !== null) {
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=TRANSCODER_HTTP_ERROR HTTP_STATUS=' .
+                $status . ' INTERNAL_CODE=' . $code
+            );
+            return;
+        }
+        self::logCreateDiagnostic(
+            'FALLBACK_CREATE_STAGE=TRANSCODER_TRANSPORT_ERROR INTERNAL_CODE=' . $code
+        );
+    }
+
+    private static function sanitizedTranscoderCode(
+        RokuTranscoderClientException $exception
+    ): string {
+        $allowed = [
+            'ROKU_TRANSCODER_CLIENT_INVALID_ARGUMENT',
+            'ROKU_TRANSCODER_CLIENT_INVALID_BASE_URL',
+            'ROKU_TRANSCODER_CLIENT_INVALID_CONFIG',
+            'ROKU_TRANSCODER_CLIENT_INVALID_PAYLOAD',
+            'ROKU_TRANSCODER_CLIENT_CURL_UNAVAILABLE',
+            'ROKU_TRANSCODER_CLIENT_TRANSPORT_FAILED',
+            'ROKU_TRANSCODER_CLIENT_TIMEOUT',
+            'ROKU_TRANSCODER_CLIENT_RESPONSE_TOO_LARGE',
+            'ROKU_TRANSCODER_CLIENT_INVALID_CONTENT_TYPE',
+            'ROKU_TRANSCODER_CLIENT_INVALID_RESPONSE',
+            'ROKU_TRANSCODER_CLIENT_UNAUTHORIZED',
+            'ROKU_TRANSCODER_CLIENT_FORBIDDEN',
+            'ROKU_TRANSCODER_CLIENT_NOT_FOUND',
+            'ROKU_TRANSCODER_CLIENT_CONFLICT',
+            'ROKU_TRANSCODER_CLIENT_CAPACITY_EXCEEDED',
+            'ROKU_TRANSCODER_CLIENT_UPSTREAM_REJECTED',
+            'ROKU_TRANSCODER_CLIENT_UPSTREAM_FAILED',
+        ];
+        $code = $exception->getMessage();
+        return in_array($code, $allowed, true) ? $code : 'TRANSCODER_INTERNAL_ERROR';
     }
 
     public function getStatus(

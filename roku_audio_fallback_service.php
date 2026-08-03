@@ -670,7 +670,14 @@ final class RokuAudioFallbackService
 
     private function requireEnabled(): void
     {
+        self::logCreateDiagnostic(
+            'FALLBACK_CREATE_STAGE=FEATURE_GATE_CHECK ENABLED=' .
+            ($this->enabled ? 'true' : 'false')
+        );
         if (!$this->enabled) {
+            self::logCreateDiagnostic(
+                'FALLBACK_CREATE_STAGE=FEATURE_GATE_REJECTED INTERNAL_CODE=FALLBACK_DISABLED'
+            );
             throw new RokuAudioFallbackServiceException('ROKU_AUDIO_FALLBACK_DISABLED');
         }
     }

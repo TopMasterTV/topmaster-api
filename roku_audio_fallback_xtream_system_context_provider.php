@@ -29,7 +29,7 @@ final class RokuAudioFallbackQueryXtreamSystemContextProvider
 SELECT
     s.id AS sistema_id,
     s.cliente_id,
-    (s.status = 'Active') AS active,
+    c.ativo AS active,
     CASE
         WHEN COALESCE(NULLIF(TRIM(s.url), ''), NULLIF(TRIM(m.url_padrao), '')) IS NOT NULL
           AND s.usuario IS NOT NULL
@@ -45,6 +45,8 @@ SELECT
     s.usuario AS username,
     s.senha AS password
 FROM public.sistemas AS s
+INNER JOIN public.clientes AS c
+    ON c.id = s.cliente_id
 LEFT JOIN public.modelos_sistemas AS m
     ON m.id = s.modelo_id
 WHERE s.id = :sistema_id

@@ -48,6 +48,7 @@ $destinos_validos = [
     'todos',
     'celular_cliente',
     'tv_cliente',
+    'roku_cliente',
     'notebook_cliente'
 ];
 

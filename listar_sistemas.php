@@ -47,7 +47,7 @@ try {
         LEFT JOIN modelos_sistemas m 
             ON s.modelo_id = m.id
         WHERE s.cliente_id = :cliente_id
-        ORDER BY s.id DESC
+        ORDER BY s.id ASC
     ");
 
     $stmt->execute([

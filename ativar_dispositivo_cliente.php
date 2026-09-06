@@ -81,13 +81,14 @@ try {
         SET
             cliente_id = cliente.id,
             status = 'active',
-            owner_actor_type = 'master',
-            owner_actor_id = :actor_id,
+            owner_actor_type = COALESCE(dispositivo.owner_actor_type, 'master'),
+            owner_actor_id = COALESCE(dispositivo.owner_actor_id, :actor_id),
             first_activated_at = COALESCE(dispositivo.first_activated_at, clock_timestamp()),
             disabled_at = NULL
         FROM clientes AS cliente
         WHERE dispositivo.device_code = :device_code
           AND cliente.id = :cliente_id
+          AND (dispositivo.cliente_id IS NULL OR dispositivo.cliente_id = cliente.id)
         RETURNING dispositivo.device_code
         SQL);
     $ativacao->execute([

@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 require 'db.php';
+require_once __DIR__ . '/client_credential_crypto.php';
 
 try {
 
@@ -43,6 +44,8 @@ try {
         ]);
         exit;
     }
+
+    $pdo->beginTransaction();
 
     if ($link_pagamento !== '') {
 
@@ -92,16 +95,26 @@ try {
     }
 
     if (!empty($senha)) {
+        $senhaRecuperavel = criptografarSenhaRecuperavelCliente(
+            $senha,
+            (int) $cliente_id
+        );
+
         $stmtSenha = $pdo->prepare("
             UPDATE public.clientes
-            SET senha = :senha
+            SET
+                senha = :senha,
+                senha_recuperavel = :senha_recuperavel
             WHERE id = :cliente_id
         ");
         $stmtSenha->execute([
             ':senha' => password_hash($senha, PASSWORD_DEFAULT),
+            ':senha_recuperavel' => $senhaRecuperavel,
             ':cliente_id' => $cliente_id
         ]);
     }
+
+    $pdo->commit();
 
     echo json_encode([
         'success' => true,
@@ -110,9 +123,12 @@ try {
 
 } catch (Throwable $e) {
 
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
     echo json_encode([
         'success' => false,
-        'erro_real' => $e->getMessage(),
-        'linha' => $e->getLine()
+        'message' => 'Erro ao atualizar cliente'
     ]);
 }

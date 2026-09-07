@@ -1,6 +1,8 @@
 <?php
 header("Content-Type: application/json");
 
+require_once __DIR__ . '/client_credential_crypto.php';
+
 /* =========================
    RECEBE DADOS (GET ou POST)
    ========================= */
@@ -62,6 +64,8 @@ try {
 $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
 try {
+    $pdo->beginTransaction();
+
     $stmt = $pdo->prepare("
         INSERT INTO clientes (
             nome,
@@ -86,6 +90,7 @@ try {
             :revendedor_id,
             :revendedor_nome
         )
+        RETURNING id
     ");
 
     $stmt->execute([
@@ -102,7 +107,34 @@ try {
     ]);
 
     // 🔥 A ÚNICA ADIÇÃO
-    $cliente_id = $pdo->lastInsertId();
+    $cliente_id = filter_var(
+        $stmt->fetchColumn(),
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    );
+    if ($cliente_id === false) {
+        throw new RuntimeException('Cliente criado sem identificador valido');
+    }
+
+    $senha_recuperavel = criptografarSenhaRecuperavelCliente(
+        $senha,
+        $cliente_id
+    );
+
+    $stmtCredencial = $pdo->prepare("
+        UPDATE clientes
+        SET senha_recuperavel = :senha_recuperavel
+        WHERE id = :cliente_id
+    ");
+    $stmtCredencial->execute([
+        ':senha_recuperavel' => $senha_recuperavel,
+        ':cliente_id' => $cliente_id
+    ]);
+    if ($stmtCredencial->rowCount() !== 1) {
+        throw new RuntimeException('Credencial do cliente nao foi gravada');
+    }
+
+    $pdo->commit();
 
     echo json_encode([
         "success" => true,
@@ -110,7 +142,11 @@ try {
         "message" => "Cliente criado com sucesso"
     ]);
 
-} catch (PDOException $e) {
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
     echo json_encode([
         "success" => false,
         "message" => "Erro ao criar cliente"

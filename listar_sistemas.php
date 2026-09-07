@@ -56,57 +56,10 @@ try {
 
     $sistemas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 🔥 BUSCAR STATUS REAL
+    // Preserva o contrato sem consultar o provider.
     foreach ($sistemas as &$sistema) {
-
-        $url = rtrim($sistema['url'], '/');
-        $usuario = $sistema['usuario'];
-        $senha = $sistema['senha'];
-
-        if (!empty($url) && !empty($usuario) && !empty($senha)) {
-
-            $apiUrl = "$url/player_api.php?username=$usuario&password=$senha";
-
-            try {
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-                // 🔥 CORREÇÃO PRINCIPAL
-                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-
-                $response = curl_exec($ch);
-
-                // 🔥 VERIFICA ERRO REAL
-                if ($response === false) {
-                    $sistema['status'] = 'Error';
-                    $sistema['exp_date'] = null;
-                    curl_close($ch);
-                    continue;
-                }
-
-                curl_close($ch);
-
-                $data = json_decode($response, true);
-
-                if (isset($data['user_info'])) {
-                    $sistema['status'] = $data['user_info']['status'] ?? 'Unknown';
-                    $sistema['exp_date'] = $data['user_info']['exp_date'] ?? null;
-                } else {
-                    $sistema['status'] = 'Unknown';
-                    $sistema['exp_date'] = null;
-                }
-
-            } catch (Exception $e) {
-                $sistema['status'] = 'Error';
-                $sistema['exp_date'] = null;
-            }
-
-        } else {
-            $sistema['status'] = 'Sem dados';
-            $sistema['exp_date'] = null;
-        }
+        $sistema['status'] = null;
+        $sistema['exp_date'] = null;
     }
 
     echo json_encode([

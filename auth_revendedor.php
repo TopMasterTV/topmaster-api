@@ -1,6 +1,8 @@
 <?php
 header("Content-Type: application/json");
 
+require_once __DIR__ . '/administrative_token_auth.php';
+
 /* =========================
    RECEBE DADOS
    ========================= */
@@ -106,15 +108,29 @@ if (!$senhaValida) {
     exit;
 }
 
+try {
+    $autenticacaoAdministrativa = emitirTokenAdministrativo(
+        $pdo,
+        'revendedor',
+        (int) $revendedor['id']
+    );
+} catch (Throwable $e) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Erro ao iniciar sessao administrativa"
+    ]);
+    exit;
+}
+
 /* =========================
    LOGIN OK
    ========================= */
-echo json_encode([
+echo json_encode(array_merge([
     "success" => true,
     "revendedor" => [
         "id"      => (int) $revendedor['id'],
         "nome"    => $revendedor['nome'],
         "usuario" => $revendedor['usuario']
     ]
-]);
+], $autenticacaoAdministrativa));
 exit;

@@ -1,12 +1,15 @@
 <?php
 header("Content-Type: application/json");
 
-$revendedor_id = $_POST['revendedor_id'] ?? $_GET['revendedor_id'] ?? '';
+require_once __DIR__ . '/administrative_token_auth.php';
 
-if ($revendedor_id == '') {
+function responderErroListagem(int $statusHttp, string $codigo, string $mensagem): void
+{
+    http_response_code($statusHttp);
     echo json_encode([
         "success" => false,
-        "message" => "revendedor_id obrigatório"
+        "code" => $codigo,
+        "message" => $mensagem,
     ]);
     exit;
 }
@@ -43,15 +46,37 @@ try {
     exit;
 }
 
-// 🔥 BUSCA CLIENTES DO REVENDEDOR
+try {
+    $ator = autenticarTokenAdministrativo($pdo);
+} catch (AdministrativeAuthException $e) {
+    responderErroListagem(
+        $e->getStatusHttp(),
+        $e->getCodigoPublico(),
+        $e->getMensagemPublica()
+    );
+}
+
+if ($ator['actor_type'] !== 'revendedor') {
+    responderErroListagem(403, 'ACCESS_DENIED', 'Acesso nao autorizado');
+}
+
+// 🔥 BUSCA CLIENTES DO REVENDEDOR AUTENTICADO
 $stmt = $pdo->prepare("
-    SELECT * FROM clientes
+    SELECT
+        id,
+        nome,
+        usuario,
+        whatsapp,
+        plano,
+        link_pagamento,
+        admin_id
+    FROM clientes
     WHERE revendedor_id = :revendedor_id
     ORDER BY nome ASC
 ");
 
 $stmt->execute([
-    ':revendedor_id' => $revendedor_id
+    ':revendedor_id' => $ator['actor_id']
 ]);
 
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);

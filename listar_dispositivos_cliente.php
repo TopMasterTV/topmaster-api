@@ -18,6 +18,15 @@ function erroListaDispositivos(int $statusHttp, string $codigo): never
     responderListaDispositivos($statusHttp, ['success' => false, 'error' => $codigo]);
 }
 
+function acessoNegadoListaDispositivos(): never
+{
+    responderListaDispositivos(403, [
+        'success' => false,
+        'code' => 'FORBIDDEN',
+        'message' => 'Acesso não autorizado',
+    ]);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     header('Allow: POST');
     erroListaDispositivos(405, 'METHOD_NOT_ALLOWED');
@@ -54,8 +63,25 @@ try {
     );
 
     $sessao = autenticarTokenAdministrativo($pdo);
-    if ($sessao['actor_type'] !== 'master') {
-        erroListaDispositivos(403, 'ACCESS_DENIED');
+    if (!in_array($sessao['actor_type'], ['master', 'revendedor'], true)) {
+        acessoNegadoListaDispositivos();
+    }
+
+    $consultaCliente = $pdo->prepare(<<<'SQL'
+        SELECT id, revendedor_id
+        FROM clientes
+        WHERE id = :cliente_id
+        LIMIT 1
+        SQL);
+    $consultaCliente->execute([':cliente_id' => $clienteId]);
+    $cliente = $consultaCliente->fetch();
+
+    if (
+        $cliente !== false
+        && $sessao['actor_type'] === 'revendedor'
+        && (int) ($cliente['revendedor_id'] ?? 0) !== $sessao['actor_id']
+    ) {
+        acessoNegadoListaDispositivos();
     }
 
     $consulta = $pdo->prepare(<<<'SQL'

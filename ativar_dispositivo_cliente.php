@@ -72,7 +72,24 @@ try {
     );
 
     $sessao = autenticarTokenAdministrativo($pdo);
-    if ($sessao['actor_type'] !== 'master') {
+    if (!in_array($sessao['actor_type'], ['master', 'revendedor'], true)) {
+        erroAtivacao(403, 'ACCESS_DENIED');
+    }
+
+    $consultaCliente = $pdo->prepare(<<<'SQL'
+        SELECT id, revendedor_id
+        FROM clientes
+        WHERE id = :cliente_id
+        LIMIT 1
+        SQL);
+    $consultaCliente->execute([':cliente_id' => $clienteId]);
+    $cliente = $consultaCliente->fetch();
+
+    if (
+        $cliente !== false
+        && $sessao['actor_type'] === 'revendedor'
+        && (int) ($cliente['revendedor_id'] ?? 0) !== $sessao['actor_id']
+    ) {
         erroAtivacao(403, 'ACCESS_DENIED');
     }
 
@@ -81,7 +98,7 @@ try {
         SET
             cliente_id = cliente.id,
             status = 'active',
-            owner_actor_type = COALESCE(dispositivo.owner_actor_type, 'master'),
+            owner_actor_type = COALESCE(dispositivo.owner_actor_type, :actor_type),
             owner_actor_id = COALESCE(dispositivo.owner_actor_id, :actor_id),
             first_activated_at = COALESCE(dispositivo.first_activated_at, clock_timestamp()),
             disabled_at = NULL
@@ -92,6 +109,7 @@ try {
         RETURNING dispositivo.device_code
         SQL);
     $ativacao->execute([
+        ':actor_type' => $sessao['actor_type'],
         ':actor_id' => $sessao['actor_id'],
         ':device_code' => $deviceCode,
         ':cliente_id' => $clienteId,

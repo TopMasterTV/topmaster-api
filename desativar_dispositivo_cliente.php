@@ -58,7 +58,24 @@ try {
     );
 
     $sessao = autenticarTokenAdministrativo($pdo);
-    if ($sessao['actor_type'] !== 'master') {
+    if (!in_array($sessao['actor_type'], ['master', 'revendedor'], true)) {
+        erroDesativacao(403, 'ACCESS_DENIED');
+    }
+
+    $consultaCliente = $pdo->prepare(<<<'SQL'
+        SELECT id, revendedor_id
+        FROM clientes
+        WHERE id = :cliente_id
+        LIMIT 1
+        SQL);
+    $consultaCliente->execute([':cliente_id' => $clienteId]);
+    $cliente = $consultaCliente->fetch();
+
+    if (
+        $cliente !== false
+        && $sessao['actor_type'] === 'revendedor'
+        && (int) ($cliente['revendedor_id'] ?? 0) !== $sessao['actor_id']
+    ) {
         erroDesativacao(403, 'ACCESS_DENIED');
     }
 

@@ -34,7 +34,7 @@ try {
     ]);
 }
 
-if (($ator['actor_type'] ?? null) !== 'master') {
+if (!in_array(($ator['actor_type'] ?? null), ['master', 'revendedor'], true)) {
     responderJsonCredencialCliente(403, [
         'success' => false,
         'code' => 'FORBIDDEN',
@@ -69,7 +69,8 @@ try {
         SELECT
             id,
             usuario,
-            senha_recuperavel
+            senha_recuperavel,
+            revendedor_id
         FROM clientes
         WHERE id = :cliente_id
         LIMIT 1
@@ -89,6 +90,17 @@ if (!$cliente) {
         'success' => false,
         'code' => 'CLIENT_NOT_FOUND',
         'message' => 'Cliente não encontrado',
+    ]);
+}
+
+if (
+    $ator['actor_type'] === 'revendedor'
+    && (int) ($cliente['revendedor_id'] ?? 0) !== $ator['actor_id']
+) {
+    responderJsonCredencialCliente(403, [
+        'success' => false,
+        'code' => 'FORBIDDEN',
+        'message' => 'Acesso não autorizado',
     ]);
 }
 

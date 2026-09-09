@@ -58,9 +58,21 @@ try {
    BUSCA CLIENTE
    ========================= */
 $stmt = $pdo->prepare("
-    SELECT id, nome, usuario, senha, m3u_url, admin_id, link_pagamento, plano
-    FROM clientes
-    WHERE usuario = :usuario
+    SELECT
+        c.id,
+        c.nome,
+        c.usuario,
+        c.senha,
+        c.m3u_url,
+        c.admin_id,
+        c.link_pagamento,
+        c.plano,
+        r.whatsapp AS suporte_whatsapp
+    FROM clientes c
+    LEFT JOIN admins r
+        ON r.id = c.revendedor_id
+        AND r.tipo = 'revendedor'
+    WHERE c.usuario = :usuario
     LIMIT 1
 ");
 $stmt->execute([
@@ -123,7 +135,8 @@ echo json_encode([
         "m3u_url"        => $cliente['m3u_url'],
         "admin_id"       => (int) $cliente['admin_id'],
         "link_pagamento" => $cliente['link_pagamento'] ?? '',
-        "plano"          => $cliente['plano'] ?? ''
+        "plano"          => $cliente['plano'] ?? '',
+        "suporte_whatsapp" => $cliente['suporte_whatsapp'] ?? null
     ]
 ]);
 exit;

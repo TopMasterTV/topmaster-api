@@ -16,7 +16,13 @@ RUN a2enmod rewrite
 # Copia os arquivos para o Apache
 COPY . /var/www/html/
 
+# Mantem helpers internos fora do DocumentRoot publico do Apache.
+ENV TOPMASTER_PRIVATE_DIR=/var/www/private
+RUN mkdir -p "$TOPMASTER_PRIVATE_DIR" \
+    && mv /var/www/html/aviso_cliente_action.php \
+        "$TOPMASTER_PRIVATE_DIR/aviso_cliente_action.php"
+
 # Permissões
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html "$TOPMASTER_PRIVATE_DIR"
 
 EXPOSE 80

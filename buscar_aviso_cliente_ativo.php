@@ -1,7 +1,14 @@
 <?php
 header("Content-Type: application/json");
 
+require_once (getenv('TOPMASTER_PRIVATE_DIR') ?: __DIR__)
+    . '/aviso_cliente_action.php';
+
 $app_tipo = $_REQUEST['app_tipo'] ?? '';
+$destino_exato = filter_var(
+    $_REQUEST['destino_exato'] ?? false,
+    FILTER_VALIDATE_BOOLEAN
+);
 
 if ($app_tipo === '') {
     echo json_encode([
@@ -33,16 +40,27 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $stmt = $pdo->prepare("
-        SELECT *
-        FROM public.avisos_cliente
-        WHERE ativo = true
-        AND destino IN ('todos', :app_tipo)
-        ORDER BY
-            CASE WHEN destino = :app_tipo THEN 0 ELSE 1 END,
-            id DESC
-        LIMIT 1
-    ");
+    if ($destino_exato) {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM public.avisos_cliente
+            WHERE ativo = true
+              AND destino = :app_tipo
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM public.avisos_cliente
+            WHERE ativo = true
+              AND destino IN ('todos', :app_tipo)
+            ORDER BY
+                CASE WHEN destino = :app_tipo THEN 0 ELSE 1 END,
+                id DESC
+            LIMIT 1
+        ");
+    }
 
     $stmt->execute([
         ':app_tipo' => $app_tipo
@@ -57,6 +75,10 @@ try {
         ]);
         exit;
     }
+
+    $aviso['button_action'] = normalizarAvisoClienteButtonAction(
+        $aviso['button_action'] ?? null
+    );
 
     echo json_encode([
         "success" => true,

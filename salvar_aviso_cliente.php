@@ -1,6 +1,9 @@
 <?php
 header("Content-Type: application/json; charset=utf-8");
 
+require_once (getenv('TOPMASTER_PRIVATE_DIR') ?: __DIR__)
+    . '/aviso_cliente_action.php';
+
 function responder($success, $message, $extra = []) {
     echo json_encode(array_merge([
         "success" => $success,
@@ -39,6 +42,9 @@ $titulo = trim($_REQUEST['titulo'] ?? '');
 $mensagem = trim($_REQUEST['mensagem'] ?? '');
 $link_url = trim($_REQUEST['link_url'] ?? '');
 $link_texto = trim($_REQUEST['link_texto'] ?? '');
+$button_action = normalizarAvisoClienteButtonAction(
+    $_REQUEST['button_action'] ?? null
+);
 $destino = trim($_REQUEST['destino'] ?? 'todos');
 
 $ativo_bool = lerBooleano($_REQUEST['ativo'] ?? 'true', true);
@@ -94,9 +100,12 @@ try {
     SET ativo = false,
         atualizado_em = NOW()
     WHERE ativo = true
+      AND destino = :destino
 ");
 
-$stmtDesativar->execute();
+$stmtDesativar->execute([
+    ':destino' => $destino
+]);
 
     /*
         Se veio ativo=false, a intenção é só desativar.
@@ -123,6 +132,7 @@ $stmtDesativar->execute();
             mensagem,
             link_url,
             link_texto,
+            button_action,
             ativo,
             mostrar_uma_vez,
             destino,
@@ -134,6 +144,7 @@ $stmtDesativar->execute();
             :mensagem,
             :link_url,
             :link_texto,
+            :button_action,
             CAST(:ativo AS boolean),
             CAST(:mostrar_uma_vez AS boolean),
             :destino,
@@ -147,6 +158,7 @@ $stmtDesativar->execute();
         ':mensagem' => $mensagem,
         ':link_url' => $link_url,
         ':link_texto' => $link_texto,
+        ':button_action' => $button_action,
         ':ativo' => $ativo_bool ? 'true' : 'false',
         ':mostrar_uma_vez' => $mostrar_uma_vez_bool ? 'true' : 'false',
         ':destino' => $destino

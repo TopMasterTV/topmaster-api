@@ -9,6 +9,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 require_once __DIR__ . '/roku_token_auth.php';
+require_once __DIR__ . '/roku_sistema_context.php';
+require_once __DIR__ . '/roku_xtream_client.php';
 
 function responderJsonRokuSistemas(int $statusHttp, array $conteudo): never
 {
@@ -118,7 +120,7 @@ try {
         LEFT JOIN modelos_sistemas AS m
             ON m.id = s.modelo_id
         WHERE s.cliente_id = :cliente_id
-        ORDER BY s.id DESC
+        ORDER BY s.id ASC
         SQL);
     $consultaSistemas->execute([
         ':cliente_id' => $autenticacao['cliente_id'],
@@ -127,13 +129,64 @@ try {
     $sistemas = [];
 
     foreach ($consultaSistemas->fetchAll(PDO::FETCH_ASSOC) as $sistema) {
+        $sistemaId = (int) $sistema['id'];
+        $status = (string) $sistema['status'];
+        $vencimento = null;
+
+        try {
+            $contexto = obterContextoSistemaRoku(
+                $pdo,
+                (int) $autenticacao['cliente_id'],
+                $sistemaId
+            );
+
+            if (
+                $contexto['tipo_acesso'] === 'xtream'
+                && is_string($contexto['fornecedor_url'])
+                && $contexto['fornecedor_url'] !== ''
+                && is_string($contexto['usuario'])
+                && $contexto['usuario'] !== ''
+                && is_string($contexto['senha'])
+                && $contexto['senha'] !== ''
+            ) {
+                $respostaXtream = requisitarJsonXtreamRoku(
+                    $contexto['fornecedor_url'],
+                    $contexto['usuario'],
+                    $contexto['senha']
+                );
+
+                $userInfo = $respostaXtream['user_info'] ?? null;
+
+                if (is_array($userInfo)) {
+                    $statusXtream = $userInfo['status'] ?? null;
+
+                    if (
+                        is_string($statusXtream)
+                        && trim($statusXtream) !== ''
+                    ) {
+                        $status = trim($statusXtream);
+                    }
+
+                    $expDate = $userInfo['exp_date'] ?? null;
+
+                    if (
+                        (is_string($expDate) || is_int($expDate))
+                        && ctype_digit((string) $expDate)
+                        && (int) $expDate > 0
+                    ) {
+                        $vencimento = gmdate('Y-m-d', (int) $expDate);
+                    }
+                }
+            }
+        } catch (Throwable $erroFornecedor) {
+            // Para Xtream, nao substitui a data real por vencimento administrativo.
+        }
+
         $sistemas[] = [
-            'id' => (int) $sistema['id'],
+            'id' => $sistemaId,
             'nome' => (string) $sistema['nome'],
-            'status' => (string) $sistema['status'],
-            'vencimento' => $sistema['vencimento'] !== null
-                ? (string) $sistema['vencimento']
-                : null,
+            'status' => $status,
+            'vencimento' => $vencimento,
         ];
     }
 

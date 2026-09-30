@@ -132,7 +132,9 @@ try {
     foreach ($consultaSistemas->fetchAll(PDO::FETCH_ASSOC) as $sistema) {
         $sistemaId = (int) $sistema['id'];
         $status = (string) $sistema['status'];
-        $vencimento = null;
+        $vencimento = $sistema['vencimento'] !== null
+            ? (string) $sistema['vencimento']
+            : null;
 
         try {
             $contexto = obterContextoSistemaRoku(

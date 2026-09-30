@@ -11,6 +11,7 @@ header('Cache-Control: no-store');
 require_once __DIR__ . '/roku_token_auth.php';
 require_once __DIR__ . '/roku_sistema_context.php';
 require_once __DIR__ . '/roku_xtream_client.php';
+require_once __DIR__ . '/roku_xtream_observability.php';
 
 function responderJsonRokuSistemas(int $statusHttp, array $conteudo): never
 {
@@ -149,6 +150,9 @@ try {
                 && is_string($contexto['senha'])
                 && $contexto['senha'] !== ''
             ) {
+                $requestIdXtream = gerarRequestIdObservabilidadeXtreamRoku();
+                $inicioXtreamNanos = hrtime(true);
+
                 $respostaXtream = requisitarJsonXtreamRoku(
                     $contexto['fornecedor_url'],
                     $contexto['usuario'],
@@ -178,8 +182,22 @@ try {
                     }
                 }
             }
-        } catch (Throwable $erroFornecedor) {
+        } catch (RokuXtreamException $erroFornecedor) {
+            $duracaoXtreamMs = isset($inicioXtreamNanos)
+                ? calcularDuracaoMsObservabilidadeXtreamRoku($inicioXtreamNanos)
+                : 0;
+
+            emitirLinhaObservabilidadeXtreamRoku(
+                $requestIdXtream ?? ROKU_XTREAM_REQUEST_ID_FALLBACK,
+                $erroFornecedor->getStatusHttp(),
+                $erroFornecedor->getCodigoPublico(),
+                $erroFornecedor->getCategoriaInterna(),
+                $duracaoXtreamMs
+            );
+
             // Para Xtream, nao substitui a data real por vencimento administrativo.
+        } catch (Throwable $erroFornecedor) {
+            // Preserva o comportamento anterior para falhas nao-Xtream.
         }
 
         $sistemas[] = [

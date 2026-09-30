@@ -676,7 +676,7 @@ function requisitarJsonXtreamRoku(
         CURLOPT_NOSIGNAL => true,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_USERAGENT => 'TopMaster-Roku-Backend/1.0',
+        CURLOPT_USERAGENT => 'Mozilla/5.0',
         CURLOPT_HEADER => false,
         CURLOPT_RETURNTRANSFER => false,
         CURLOPT_FAILONERROR => false,

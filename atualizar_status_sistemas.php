@@ -161,7 +161,15 @@ try {
             SELECT 1
             FROM public.sistemas s
             WHERE s.cliente_id = c.id
-            AND s.vencimento >= CURRENT_DATE
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM public.sistemas s
+            WHERE s.cliente_id = c.id
+              AND (
+                  s.vencimento IS NULL
+                  OR s.vencimento < CURRENT_DATE
+              )
         )
     ");
 

@@ -70,7 +70,7 @@ try {
                 ) AS total_sistemas,
 
                 (
-                    SELECT MAX(s.vencimento)
+                    SELECT MIN(s.vencimento)
                     FROM public.sistemas s
                     WHERE s.cliente_id = c.id
                 ) AS vencimento_principal

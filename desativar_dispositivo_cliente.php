@@ -39,6 +39,8 @@ if ($clienteId === false) {
     erroDesativacao(400, 'INVALID_CLIENTE_ID');
 }
 
+$pdo = null;
+
 try {
     $databaseUrl = getenv('DATABASE_URL');
     if (!is_string($databaseUrl) || $databaseUrl === '') {
@@ -79,21 +81,42 @@ try {
         erroDesativacao(403, 'ACCESS_DENIED');
     }
 
+    $pdo->beginTransaction();
+
     $desativacao = $pdo->prepare(<<<'SQL'
         UPDATE client_devices
         SET status = 'disabled', disabled_at = clock_timestamp()
         WHERE device_code = :device_code
           AND cliente_id = :cliente_id
-        RETURNING device_code
+        RETURNING device_uuid, device_code
         SQL);
     $desativacao->execute([':device_code' => $deviceCode, ':cliente_id' => $clienteId]);
-    if ($desativacao->fetch() === false) {
+    $dispositivo = $desativacao->fetch();
+    if ($dispositivo === false) {
+        $pdo->rollBack();
         erroDesativacao(404, 'DEVICE_NOT_FOUND_FOR_CLIENT');
     }
 
+    $deviceIdHash = hash('sha256', (string) $dispositivo['device_uuid']);
+    $revogacao = $pdo->prepare(<<<'SQL'
+        UPDATE cliente_tokens
+        SET
+            revogado_em = clock_timestamp(),
+            motivo_revogacao = 'DEVICE_DISABLED'
+        WHERE app_tipo = 'roku'
+          AND device_id_hash = :device_id_hash
+          AND revogado_em IS NULL
+        SQL);
+    $revogacao->execute([':device_id_hash' => $deviceIdHash]);
+
+    $pdo->commit();
     responderDesativacao(200, ['success' => true]);
 } catch (AdministrativeAuthException $e) {
     erroDesativacao($e->getStatusHttp(), $e->getCodigoPublico());
 } catch (Throwable $e) {
+    if ($pdo instanceof PDO && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
     erroDesativacao(500, 'INTERNAL_ERROR');
 }

@@ -85,6 +85,11 @@ function responderDispositivoExistente(array $dispositivo, string $secretHash): 
     ]);
 }
 
+function responderDispositivoJaRegistrado(): void
+{
+    responderErro(409, 'DEVICE_ALREADY_REGISTERED');
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     header('Allow: POST');
     responderErro(405, 'METHOD_NOT_ALLOWED');
@@ -133,7 +138,7 @@ if (!is_array($dados) || array_key_exists('device_code', $dados)) {
 $deviceUuid = $dados['device_uuid'] ?? null;
 $deviceSecret = $dados['device_secret'] ?? null;
 
-if (!is_string($deviceUuid) || !is_string($deviceSecret)) {
+if (!is_string($deviceUuid) || ($deviceSecret !== null && !is_string($deviceSecret))) {
     responderErro(400, 'INVALID_REQUEST');
 }
 
@@ -141,11 +146,11 @@ if (!uuidCanonicoValido($deviceUuid)) {
     responderErro(400, 'INVALID_DEVICE_UUID');
 }
 
-if (preg_match('/^[0-9a-f]{64}$/D', $deviceSecret) !== 1) {
+if ($deviceSecret !== null && preg_match('/^[0-9a-f]{64}$/D', $deviceSecret) !== 1) {
     responderErro(400, 'INVALID_DEVICE_SECRET');
 }
 
-$deviceSecretHash = hash('sha256', $deviceSecret);
+$segredoGeradoPeloBackend = $deviceSecret === null;
 $pdo = null;
 
 try {
@@ -185,8 +190,19 @@ try {
     $dispositivo = buscarDispositivo($pdo, $deviceUuid);
 
     if ($dispositivo !== null) {
+        if ($segredoGeradoPeloBackend) {
+            responderDispositivoJaRegistrado();
+        }
+
+        $deviceSecretHash = hash('sha256', $deviceSecret);
         responderDispositivoExistente($dispositivo, $deviceSecretHash);
     }
+
+    if ($segredoGeradoPeloBackend) {
+        $deviceSecret = bin2hex(random_bytes(32));
+    }
+
+    $deviceSecretHash = hash('sha256', $deviceSecret);
 
     $maxTentativas = 5;
     $inserir = $pdo->prepare(<<<'SQL'
@@ -229,6 +245,10 @@ try {
             $dispositivo = buscarDispositivo($pdo, $deviceUuid);
 
             if ($dispositivo !== null) {
+                if ($segredoGeradoPeloBackend) {
+                    responderDispositivoJaRegistrado();
+                }
+
                 responderDispositivoExistente($dispositivo, $deviceSecretHash);
             }
 
@@ -238,15 +258,25 @@ try {
         $inserido = $inserir->fetch();
 
         if (is_array($inserido) && is_string($inserido['device_code'] ?? null)) {
-            responderJson(201, [
+            $resposta = [
                 'success' => true,
                 'device_code' => $inserido['device_code'],
-            ]);
+            ];
+
+            if ($segredoGeradoPeloBackend) {
+                $resposta['device_secret'] = $deviceSecret;
+            }
+
+            responderJson(201, $resposta);
         }
 
         $dispositivo = buscarDispositivo($pdo, $deviceUuid);
 
         if ($dispositivo !== null) {
+            if ($segredoGeradoPeloBackend) {
+                responderDispositivoJaRegistrado();
+            }
+
             responderDispositivoExistente($dispositivo, $deviceSecretHash);
         }
     }

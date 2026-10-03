@@ -10,6 +10,20 @@ header('Cache-Control: no-store');
 
 function responderSessaoDispositivo(int $statusHttp, array $conteudo): never
 {
+    $eventoDiagnostico = [
+        'timestamp' => gmdate('c'),
+        'http_status' => $statusHttp,
+        'error_code' => $conteudo['error']['code'] ?? null,
+        'success' => $conteudo['success'] ?? null,
+        'activated' => $conteudo['activated'] ?? null,
+        'state' => $conteudo['state'] ?? null,
+    ];
+
+    error_log(
+        'roku_device_session_diagnostic='
+        . json_encode($eventoDiagnostico, JSON_UNESCAPED_SLASHES)
+    );
+
     http_response_code($statusHttp);
     echo json_encode($conteudo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;

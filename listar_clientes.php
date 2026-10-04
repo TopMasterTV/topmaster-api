@@ -61,6 +61,7 @@ try {
                 c.admin_id,
                 c.revendedor_id,
                 c.revendedor_nome,
+                COALESCE(c.tipo_cliente, 'normal') AS tipo_cliente,
                 c.criado_em,
 
                 (
@@ -103,6 +104,7 @@ try {
                 c.admin_id,
                 c.revendedor_id,
                 c.revendedor_nome,
+                COALESCE(c.tipo_cliente, 'normal') AS tipo_cliente,
                 c.criado_em,
 
                 (

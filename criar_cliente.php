@@ -16,6 +16,15 @@ $plano           = $_REQUEST['plano'] ?? '';
 $admin_id        = $_REQUEST['admin_id'] ?? '';
 $revendedor_id   = $_REQUEST['revendedor_id'] ?? null;
 $revendedor_nome = $_REQUEST['revendedor_nome'] ?? null;
+$tipo_cliente    = strtolower(trim((string) ($_REQUEST['tipo_cliente'] ?? 'normal')));
+
+if (!in_array($tipo_cliente, ['normal', 'teste'], true)) {
+    echo json_encode([
+        "success" => false,
+        "message" => "tipo_cliente invalido"
+    ]);
+    exit;
+}
 
 if (
     $nome === '' ||
@@ -77,7 +86,8 @@ try {
             plano,
             admin_id,
             revendedor_id,
-            revendedor_nome
+            revendedor_nome,
+            tipo_cliente
         ) VALUES (
             :nome,
             :usuario,
@@ -88,7 +98,8 @@ try {
             :plano,
             :admin_id,
             :revendedor_id,
-            :revendedor_nome
+            :revendedor_nome,
+            :tipo_cliente
         )
         RETURNING id
     ");
@@ -103,7 +114,8 @@ try {
         ':plano'           => $plano,
         ':admin_id'        => $admin_id,
         ':revendedor_id'   => $revendedor_id,
-        ':revendedor_nome' => $revendedor_nome
+        ':revendedor_nome' => $revendedor_nome,
+        ':tipo_cliente'    => $tipo_cliente
     ]);
 
     // 🔥 A ÚNICA ADIÇÃO

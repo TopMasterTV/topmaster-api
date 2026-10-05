@@ -54,12 +54,43 @@ try {
     ]);
 }
 
-if (($ator['actor_type'] ?? null) !== 'master') {
+if (!in_array(($ator['actor_type'] ?? null), ['master', 'revendedor'], true)) {
     responderCadastroCliente(403, [
         'success' => false,
         'code' => 'ACCESS_DENIED',
         'message' => 'Acesso nao autorizado',
     ]);
+}
+
+$revendedorId = null;
+$revendedorNome = null;
+
+if ($ator['actor_type'] === 'revendedor') {
+    $revendedorId = (int) $ator['actor_id'];
+
+    $consultaRevendedor = $pdo->prepare("
+        SELECT nome
+        FROM admins
+        WHERE id = :id
+          AND tipo = 'revendedor'
+        LIMIT 1
+    ");
+
+    $consultaRevendedor->execute([
+        ':id' => $revendedorId,
+    ]);
+
+    $revendedor = $consultaRevendedor->fetch(PDO::FETCH_ASSOC);
+
+    if (!$revendedor) {
+        responderCadastroCliente(403, [
+            'success' => false,
+            'code' => 'ACCESS_DENIED',
+            'message' => 'Revendedor nao encontrado',
+        ]);
+    }
+
+    $revendedorNome = (string) $revendedor['nome'];
 }
 
 try {
@@ -209,8 +240,8 @@ try {
             :link_pagamento,
             :plano,
             :admin_id,
-            NULL,
-            NULL,
+            :revendedor_id,
+            :revendedor_nome,
             :tipo_cliente
         )
         RETURNING id
@@ -223,6 +254,8 @@ try {
         ':link_pagamento' => $linkPagamento,
         ':plano' => $plano,
         ':admin_id' => $ator['actor_id'],
+        ':revendedor_id' => $revendedorId,
+        ':revendedor_nome' => $revendedorNome,
         ':tipo_cliente' => $tipoCliente,
     ]);
 

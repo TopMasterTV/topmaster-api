@@ -33,7 +33,8 @@ try {
     ]);
 }
 
-if (($ator['actor_type'] ?? null) !== 'master') {
+$actorType = $ator['actor_type'] ?? null;
+if (!in_array($actorType, ['master', 'revendedor'], true)) {
     responderAtivacaoClienteTeste(403, [
         'success' => false,
         'code' => 'ACCESS_DENIED',
@@ -62,14 +63,29 @@ if (!is_int($clienteId) || $clienteId <= 0) {
 }
 
 try {
-    $ativacao = $pdo->prepare(<<<'SQL'
+    $sqlAtivacao = <<<'SQL'
         UPDATE public.clientes
         SET tipo_cliente = 'normal'
         WHERE id = :cliente_id
           AND tipo_cliente = 'teste'
         RETURNING id
-        SQL);
-    $ativacao->execute([':cliente_id' => $clienteId]);
+        SQL;
+    $parametrosAtivacao = [':cliente_id' => $clienteId];
+
+    if ($actorType === 'revendedor') {
+        $sqlAtivacao = <<<'SQL'
+            UPDATE public.clientes
+            SET tipo_cliente = 'normal'
+            WHERE id = :cliente_id
+              AND tipo_cliente = 'teste'
+              AND revendedor_id = :actor_id
+            RETURNING id
+            SQL;
+        $parametrosAtivacao[':actor_id'] = $ator['actor_id'];
+    }
+
+    $ativacao = $pdo->prepare($sqlAtivacao);
+    $ativacao->execute($parametrosAtivacao);
 
     $clienteAtivado = $ativacao->fetch(PDO::FETCH_ASSOC);
     if ($ativacao->rowCount() === 1 && $clienteAtivado !== false) {
@@ -80,13 +96,27 @@ try {
         ]);
     }
 
-    $consulta = $pdo->prepare(<<<'SQL'
+    $sqlConsulta = <<<'SQL'
         SELECT tipo_cliente
         FROM public.clientes
         WHERE id = :cliente_id
         LIMIT 1
-        SQL);
-    $consulta->execute([':cliente_id' => $clienteId]);
+        SQL;
+    $parametrosConsulta = [':cliente_id' => $clienteId];
+
+    if ($actorType === 'revendedor') {
+        $sqlConsulta = <<<'SQL'
+            SELECT tipo_cliente
+            FROM public.clientes
+            WHERE id = :cliente_id
+              AND revendedor_id = :actor_id
+            LIMIT 1
+            SQL;
+        $parametrosConsulta[':actor_id'] = $ator['actor_id'];
+    }
+
+    $consulta = $pdo->prepare($sqlConsulta);
+    $consulta->execute($parametrosConsulta);
     $cliente = $consulta->fetch(PDO::FETCH_ASSOC);
 
     if ($cliente === false) {

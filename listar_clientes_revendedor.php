@@ -69,7 +69,8 @@ $stmt = $pdo->prepare("
         whatsapp,
         plano,
         link_pagamento,
-        admin_id
+        admin_id,
+        tipo_cliente
     FROM clientes
     WHERE revendedor_id = :revendedor_id
     ORDER BY nome ASC

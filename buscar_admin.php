@@ -1,61 +1,87 @@
 <?php
-header("Content-Type: application/json");
 
-$id = $_REQUEST['id'] ?? '';
+declare(strict_types=1);
 
-if ($id === '') {
-    echo json_encode(["success" => false]);
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/administrative_token_auth.php';
+
+function responderBuscaAdmin(int $statusHttp, array $conteudo): never
+{
+    http_response_code($statusHttp);
+    echo json_encode($conteudo, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$DATABASE_URL = getenv("DATABASE_URL");
-
-if (!$DATABASE_URL) {
-    echo json_encode([
-        "success" => false,
-        "message" => "DATABASE_URL não definida"
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    responderBuscaAdmin(405, [
+        'success' => false,
+        'code' => 'METHOD_NOT_ALLOWED',
+        'message' => 'Método não permitido',
     ]);
-    exit;
 }
-
-$db = parse_url($DATABASE_URL);
 
 try {
-    $pdo = new PDO(
-        "pgsql:host={$db['host']};port=" . ($db['port'] ?? 5432) .
-        ";dbname=" . ltrim($db['path'], '/') .
-        ";sslmode=require",
-        $db['user'],
-        $db['pass'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-
-    $stmt = $pdo->prepare("
-        SELECT nome, usuario, whatsapp, senha_visivel
-        FROM admins
-        WHERE id = :id
-    ");
-
-    $stmt->execute([':id' => $id]);
-
-    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$admin) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Admin não encontrado"
-        ]);
-        exit;
-    }
-
-    echo json_encode([
-        "success" => true,
-        "admin" => $admin
-    ]);
-
-} catch (Exception $e) {
-    echo json_encode([
-        "success" => false,
-        "message" => "Erro ao buscar admin"
+    $ator = autenticarTokenAdministrativo($pdo);
+} catch (AdministrativeAuthException $e) {
+    responderBuscaAdmin($e->getStatusHttp(), [
+        'success' => false,
+        'code' => $e->getCodigoPublico(),
+        'message' => $e->getMensagemPublica(),
     ]);
 }
+
+if (($ator['actor_type'] ?? null) !== 'master') {
+    responderBuscaAdmin(403, [
+        'success' => false,
+        'code' => 'FORBIDDEN',
+        'message' => 'Acesso não autorizado',
+    ]);
+}
+
+$id = filter_var(
+    $_POST['id'] ?? null,
+    FILTER_VALIDATE_INT,
+    ['options' => ['min_range' => 1]]
+);
+
+if ($id === false) {
+    responderBuscaAdmin(400, [
+        'success' => false,
+        'code' => 'INVALID_ADMIN_ID',
+        'message' => 'Administrador inválido',
+    ]);
+}
+
+try {
+    $stmt = $pdo->prepare(<<<'SQL'
+        SELECT nome, usuario, whatsapp
+        FROM admins
+        WHERE id = :id
+        LIMIT 1
+        SQL);
+    $stmt->execute([':id' => $id]);
+    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    responderBuscaAdmin(500, [
+        'success' => false,
+        'code' => 'INTERNAL_ERROR',
+        'message' => 'Erro ao buscar administrador',
+    ]);
+}
+
+if (!$admin) {
+    responderBuscaAdmin(404, [
+        'success' => false,
+        'code' => 'ADMIN_NOT_FOUND',
+        'message' => 'Administrador não encontrado',
+    ]);
+}
+
+responderBuscaAdmin(200, [
+    'success' => true,
+    'admin' => $admin,
+]);

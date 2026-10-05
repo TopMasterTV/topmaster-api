@@ -91,11 +91,22 @@ if (password_verify($senha, $revendedor['senha'])) {
 elseif ($senha === $revendedor['senha']) {
     $senhaValida = true;
 
-    // atualiza para hash
+    // Atualiza para hash sem perder a senha recuperável legada.
     $novoHash = password_hash($senha, PASSWORD_DEFAULT);
-    $upd = $pdo->prepare("UPDATE admins SET senha = :senha WHERE id = :id");
+    $upd = $pdo->prepare("
+        UPDATE admins
+        SET senha = :senha,
+            senha_visivel = CASE
+                WHEN senha_visivel IS NULL OR senha_visivel = ''
+                    THEN :senha_visivel
+                ELSE senha_visivel
+            END
+        WHERE id = :id
+          AND tipo = 'revendedor'
+    ");
     $upd->execute([
         ':senha' => $novoHash,
+        ':senha_visivel' => $senha,
         ':id'    => $revendedor['id']
     ]);
 }

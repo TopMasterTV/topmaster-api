@@ -1,0 +1,124 @@
+name: Gate avisos - lista Android TV
+
+on:
+  push:
+    branches:
+      - test/avisos-lista-android-tv
+
+permissions:
+  contents: read
+
+jobs:
+  validar-avisos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP 8.2 com PDO PostgreSQL
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql
+          coverage: none
+
+      - name: Validar extensao PDO PostgreSQL
+        run: php -r "exit(extension_loaded('pdo_pgsql') ? 0 : 1);"
+
+      - name: PHP lint do endpoint e do contrato de lista
+        run: |
+          php -l buscar_aviso_cliente_ativo.php
+          php -l tests/buscar_aviso_cliente_ativo_lista_contract_test.php
+
+      - name: Testar contrato de lista e compatibilidade SQL
+        run: php tests/buscar_aviso_cliente_ativo_lista_contract_test.php
+
+      - name: Testar contrato legado de avisos
+        run: php tests/aviso_cliente_action_contract_test.php
+
+      - name: Testar seguranca dos endpoints
+        run: |
+          for teste in tests/*security_test.php; do
+            php "$teste"
+          done
+
+      - name: Preparar PostgreSQL temporario com dados ficticios
+        run: |
+          sudo systemctl start postgresql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE avisos_ci LOGIN PASSWORD 'avisos_ci_local';"
+          sudo -u postgres createdb -O avisos_ci avisos_ci
+          PGPASSWORD=avisos_ci_local psql -v ON_ERROR_STOP=1 -h localhost -U avisos_ci -d avisos_ci <<'SQL'
+          CREATE TABLE public.avisos_cliente (
+              id bigint PRIMARY KEY,
+              titulo text NOT NULL,
+              mensagem text NOT NULL,
+              link_url text NOT NULL DEFAULT '',
+              link_texto text NOT NULL DEFAULT '',
+              button_action text,
+              ativo boolean NOT NULL,
+              mostrar_uma_vez boolean NOT NULL DEFAULT false,
+              destino text NOT NULL
+          );
+
+          INSERT INTO public.avisos_cliente
+              (id, titulo, mensagem, button_action, ativo, mostrar_uma_vez, destino)
+          VALUES
+              (40, 'Geral', 'Aviso geral ficticio', 'url', true, false, 'todos'),
+              (30, 'Android TV', 'Aviso especifico ficticio', ' UPDATE ', true, true, 'tv_cliente'),
+              (50, 'Inativo', 'Nao deve aparecer', 'url', false, false, 'tv_cliente');
+          SQL
+
+      - name: Executar endpoint real com PDO PostgreSQL isolado
+        env:
+          DATABASE_URL: postgresql://avisos_ci:avisos_ci_local@localhost:5432/avisos_ci
+        run: |
+          executar_endpoint() {
+            REQUEST_JSON="$1" php -r '$_REQUEST = json_decode(getenv("REQUEST_JSON"), true, 512, JSON_THROW_ON_ERROR); require "buscar_aviso_cliente_ativo.php";'
+          }
+
+          validar_legado() {
+            RESPONSE_JSON="$1" EXPECTED_ID="$2" php -r '
+              $r = json_decode(getenv("RESPONSE_JSON"), true, 512, JSON_THROW_ON_ERROR);
+              if (($r["success"] ?? null) !== true
+                  || isset($r["avisos"])
+                  || ($r["aviso"]["id"] ?? null) !== (int) getenv("EXPECTED_ID")) {
+                  fwrite(STDERR, "Contrato legado invalido\n");
+                  exit(1);
+              }
+            '
+          }
+
+          legado_android="$(executar_endpoint '{"app_tipo":"tv_cliente"}')"
+          validar_legado "$legado_android" 30
+
+          legado_roku="$(executar_endpoint '{"app_tipo":"roku"}')"
+          validar_legado "$legado_roku" 40
+
+          legado_celular="$(executar_endpoint '{"app_tipo":"celular"}')"
+          validar_legado "$legado_celular" 40
+
+          legado_admin="$(executar_endpoint '{"app_tipo":"tv_cliente","destino_exato":"true"}')"
+          validar_legado "$legado_admin" 30
+
+          formato_nao_lista="$(executar_endpoint '{"app_tipo":"tv_cliente","formato":"objeto"}')"
+          validar_legado "$formato_nao_lista" 30
+
+          lista="$(executar_endpoint '{"app_tipo":"tv_cliente","formato":"lista","limite":"20"}')"
+          RESPONSE_JSON="$lista" php -r '
+            $r = json_decode(getenv("RESPONSE_JSON"), true, 512, JSON_THROW_ON_ERROR);
+            $ids = array_map("intval", array_column($r["avisos"] ?? [], "id"));
+            if (($r["success"] ?? null) !== true
+                || ($r["aviso"]["id"] ?? null) !== 30
+                || $ids !== [30, 40]
+                || ($r["avisos"][0]["button_action"] ?? null) !== "update") {
+                fwrite(STDERR, "Contrato de lista invalido\n");
+                exit(1);
+            }
+          '
+
+          exato_com_lista="$(executar_endpoint '{"app_tipo":"tv_cliente","destino_exato":"true","formato":"lista"}')"
+          validar_legado "$exato_com_lista" 30
+
+          echo "PDO_PGSQL_ISOLATED_INTEGRATION_PASS"

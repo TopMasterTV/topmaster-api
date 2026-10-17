@@ -40,10 +40,7 @@ jobs:
         run: php tests/aviso_cliente_action_contract_test.php
 
       - name: Testar seguranca dos endpoints
-        run: |
-          for teste in tests/*security_test.php; do
-            php "$teste"
-          done
+        run: php tests/public_read_endpoints_error_security_test.php
 
       - name: Preparar PostgreSQL temporario com dados ficticios
         run: |

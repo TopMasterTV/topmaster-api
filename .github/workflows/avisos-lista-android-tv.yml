@@ -25,7 +25,8 @@ jobs:
           coverage: none
 
       - name: Validar extensao PDO PostgreSQL
-        run: php -r "exit(extension_loaded('pdo_pgsql') ? 0 : 1);"
+        run: |
+          php -r "exit(extension_loaded('pdo_pgsql') ? 0 : 1);"
 
       - name: PHP lint do endpoint e do contrato de lista
         run: |

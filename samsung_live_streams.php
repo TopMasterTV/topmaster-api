@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/samsung_token_auth.php';
-require_once __DIR__ . '/roku_sistema_context.php';
-require_once __DIR__ . '/roku_xtream_client.php';
+require_once __DIR__ . '/samsung_sistema_context.php';
+require_once __DIR__ . '/samsung_xtream_client.php';
 
 /**
  * Consulta somente os canais live de uma categoria, reutilizando a validação
@@ -27,7 +27,7 @@ function samsungRequestLiveStreams(
         throw new InvalidArgumentException('Credenciais Xtream inválidas');
     }
 
-    $validatedUrl = validarUrlFornecedorRoku($providerUrl);
+    $validatedUrl = samsungValidateProviderUrl($providerUrl);
     $query = http_build_query([
         'username' => $username,
         'password' => $password,
@@ -108,29 +108,29 @@ function samsungRequestLiveStreams(
     }
 
     if ($responseTooLarge) {
-        throw new RokuXtreamException(502, 'PROVIDER_RESPONSE_TOO_LARGE', 'Resposta do sistema muito grande', 'RESPONSE_TOO_LARGE');
+        throw new SamsungXtreamException(502, 'PROVIDER_RESPONSE_TOO_LARGE', 'Resposta do sistema muito grande', 'RESPONSE_TOO_LARGE');
     }
     if ($curlCode === CURLE_OPERATION_TIMEDOUT) {
-        throw new RokuXtreamException(504, 'PROVIDER_TIMEOUT', 'O sistema demorou para responder', 'PROVIDER_TIMEOUT');
+        throw new SamsungXtreamException(504, 'PROVIDER_TIMEOUT', 'O sistema demorou para responder', 'PROVIDER_TIMEOUT');
     }
     if ($executed === false || $curlCode !== CURLE_OK) {
-        throw new RokuXtreamException(502, 'PROVIDER_UNAVAILABLE', 'Não foi possível acessar o sistema', classificarErroCurlXtreamRoku($curlCode));
+        throw new SamsungXtreamException(502, 'PROVIDER_UNAVAILABLE', 'Não foi possível acessar o sistema', samsungClassifyCurlError($curlCode));
     }
-    $httpError = classificarStatusHttpFornecedorRoku($httpCode);
+    $httpError = samsungClassifyProviderHttpStatus($httpCode);
     if ($httpError !== null) {
-        throw new RokuXtreamException(502, 'PROVIDER_UNAVAILABLE', 'Não foi possível acessar o sistema', $httpError);
+        throw new SamsungXtreamException(502, 'PROVIDER_UNAVAILABLE', 'Não foi possível acessar o sistema', $httpError);
     }
     if (trim($responseBody) === '') {
-        throw new RokuXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
+        throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
     }
 
     try {
         $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
     } catch (JsonException) {
-        throw new RokuXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
+        throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
     }
     if (!is_array($decoded) || !array_is_list($decoded)) {
-        throw new RokuXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
+        throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
     }
     return $decoded;
 }
@@ -182,7 +182,7 @@ if ($systemId <= 0 || (string) $systemId !== $_GET['sistema_id']) {
 try {
     $pdo = samsungDatabase();
     $session = samsungAuthenticate($pdo);
-    $context = obterContextoSistemaRoku($pdo, $session['cliente_id'], $systemId);
+    $context = samsungGetSystemContext($pdo, $session['cliente_id'], $systemId);
 
     if (!samsungSystemIsAuthorized($context)) {
         samsungJsonError(403, 'SYSTEM_NOT_AUTHORIZED', 'Sistema não autorizado');
@@ -212,12 +212,12 @@ try {
         $seen[$streamId] = true;
         $streams[] = ['stream_id' => $streamId, 'nome' => $name];
         if (count($streams) > 10000) {
-            throw new RokuXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
+            throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
         }
     }
 
     if ($rawStreams !== [] && $streams === []) {
-        throw new RokuXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
+        throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
     }
 
     samsungJson(200, [
@@ -226,9 +226,9 @@ try {
     ]);
 } catch (SamsungAuthException $error) {
     samsungRespondAuthError($error);
-} catch (RokuSistemaException $error) {
+} catch (SamsungSistemaException $error) {
     samsungJsonError($error->getStatusHttp(), $error->getCodigoPublico(), $error->getMensagemPublica());
-} catch (RokuXtreamException $error) {
+} catch (SamsungXtreamException $error) {
     samsungJsonError($error->getStatusHttp(), $error->getCodigoPublico(), $error->getMensagemPublica());
 } catch (Throwable) {
     samsungJsonError(500, 'INTERNAL_ERROR', 'Não foi possível carregar os canais');

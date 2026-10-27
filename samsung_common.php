@@ -35,7 +35,8 @@ function samsungCorsPolicy(): array
         'samsung_login.php' => ['methods' => ['POST'], 'headers' => ['Content-Type']],
         'samsung_logout.php' => ['methods' => ['POST'], 'headers' => ['Authorization']],
         'samsung_session.php', 'samsung_listar_sistemas.php',
-        'samsung_live_categories.php', 'samsung_live_streams.php' => [
+        'samsung_live_categories.php', 'samsung_live_streams.php',
+        'samsung_xtream_context.php' => [
             'methods' => ['GET'],
             'headers' => ['Authorization'],
         ],

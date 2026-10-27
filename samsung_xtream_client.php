@@ -599,6 +599,16 @@ function samsungClassifyProviderHttpStatus(int $codigoHttp): ?string
     return 'PROVIDER_HTTP_OTHER';
 }
 
+function samsungLogProviderHttp5xx(int $codigoHttp): void
+{
+    if ($codigoHttp >= 500 && $codigoHttp <= 599) {
+        error_log(sprintf(
+            'component=samsung_xtream_client provider_http_status=%d',
+            $codigoHttp
+        ));
+    }
+}
+
 /**
  * Consulta a API Xtream com dados sensíveis exclusivamente em memória.
  *
@@ -764,6 +774,7 @@ function samsungRequestXtreamJson(
         );
     }
 
+    samsungLogProviderHttp5xx($codigoHttp);
     $categoriaErroHttp = samsungClassifyProviderHttpStatus($codigoHttp);
 
     if ($categoriaErroHttp !== null) {

@@ -27,7 +27,12 @@ try {
     $session = samsungAuthenticate($pdo);
     $context = samsungGetSystemContext($pdo, $session['cliente_id'], $systemId);
 
-    if (!samsungSystemIsAuthorized($context)) {
+    $authorizationReason = null;
+    if (!samsungSystemIsAuthorized($context, $authorizationReason)) {
+        error_log(sprintf(
+            'endpoint=samsung_live_categories.php authorization_reason=%s',
+            $authorizationReason
+        ));
         samsungJsonError(403, 'SYSTEM_NOT_AUTHORIZED', 'Sistema não autorizado');
     }
     if (($context['tipo_acesso'] ?? null) !== 'xtream') {

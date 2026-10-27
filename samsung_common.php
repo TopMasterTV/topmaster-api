@@ -218,17 +218,24 @@ function samsungPgBool(mixed $value): bool
  * Datas ausentes preservam o status existente; datas presentes são validadas
  * e nunca podem reautorizar um status diferente de Active.
  */
-function samsungSystemIsAuthorized(array $context): bool
+function samsungSystemIsAuthorized(array $context, ?string &$reason = null): bool
 {
+    $reason = null;
+
     if (strcasecmp(trim((string) ($context['status'] ?? '')), 'Active') !== 0) {
+        $reason = 'STATUS_NOT_ACTIVE';
         return false;
     }
 
     $expirationTimestamp = $context['exp_date'] ?? null;
     if ($expirationTimestamp !== null) {
         $expirationTimestamp = trim((string) $expirationTimestamp);
-        if ($expirationTimestamp === '' || !ctype_digit($expirationTimestamp)
-            || (int) $expirationTimestamp <= time()) {
+        if ($expirationTimestamp === '' || !ctype_digit($expirationTimestamp)) {
+            $reason = 'EXP_DATE_INVALID';
+            return false;
+        }
+        if ((int) $expirationTimestamp <= time()) {
+            $reason = 'EXP_DATE_EXPIRED';
             return false;
         }
     }
@@ -239,8 +246,12 @@ function samsungSystemIsAuthorized(array $context): bool
         $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expirationDate);
         $parseErrors = DateTimeImmutable::getLastErrors();
         if ($parsedDate === false
-            || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))
-            || $parsedDate < new DateTimeImmutable('today')) {
+            || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))) {
+            $reason = 'VENCIMENTO_INVALID';
+            return false;
+        }
+        if ($parsedDate < new DateTimeImmutable('today')) {
+            $reason = 'VENCIMENTO_EXPIRED';
             return false;
         }
     }

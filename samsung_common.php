@@ -34,7 +34,8 @@ function samsungCorsPolicy(): array
     return match (basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))) {
         'samsung_login.php' => ['methods' => ['POST'], 'headers' => ['Content-Type']],
         'samsung_logout.php' => ['methods' => ['POST'], 'headers' => ['Authorization']],
-        'samsung_session.php', 'samsung_listar_sistemas.php' => [
+        'samsung_session.php', 'samsung_listar_sistemas.php',
+        'samsung_live_categories.php', 'samsung_live_streams.php' => [
             'methods' => ['GET'],
             'headers' => ['Authorization'],
         ],
@@ -210,6 +211,41 @@ function samsungPgBool(mixed $value): bool
         return false;
     }
     throw new UnexpectedValueException('Booleano PostgreSQL inválido');
+}
+
+/**
+ * Confirma o estado de uso de um sistema já restrito ao cliente autenticado.
+ * Datas ausentes preservam o status existente; datas presentes são validadas
+ * e nunca podem reautorizar um status diferente de Active.
+ */
+function samsungSystemIsAuthorized(array $context): bool
+{
+    if (strcasecmp(trim((string) ($context['status'] ?? '')), 'Active') !== 0) {
+        return false;
+    }
+
+    $expirationTimestamp = $context['exp_date'] ?? null;
+    if ($expirationTimestamp !== null) {
+        $expirationTimestamp = trim((string) $expirationTimestamp);
+        if ($expirationTimestamp === '' || !ctype_digit($expirationTimestamp)
+            || (int) $expirationTimestamp <= time()) {
+            return false;
+        }
+    }
+
+    $expirationDate = $context['vencimento'] ?? null;
+    if ($expirationDate !== null) {
+        $expirationDate = trim((string) $expirationDate);
+        $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expirationDate);
+        $parseErrors = DateTimeImmutable::getLastErrors();
+        if ($parsedDate === false
+            || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))
+            || $parsedDate < new DateTimeImmutable('today')) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 header('Content-Type: application/json; charset=utf-8');

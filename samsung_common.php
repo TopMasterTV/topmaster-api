@@ -215,46 +215,32 @@ function samsungPgBool(mixed $value): bool
 }
 
 /**
- * Confirma o estado de uso de um sistema já restrito ao cliente autenticado.
- * Datas ausentes preservam o status existente; datas presentes são validadas
- * e nunca podem reautorizar um status diferente de Active.
+ * Confirma a validade administrativa de um sistema já restrito ao cliente
+ * autenticado. O vencimento é a fonte mantida pelos fluxos do painel; status e
+ * exp_date são informações auxiliares do provedor e podem estar desatualizados.
  */
 function samsungSystemIsAuthorized(array $context, ?string &$reason = null): bool
 {
     $reason = null;
 
-    if (strcasecmp(trim((string) ($context['status'] ?? '')), 'Active') !== 0) {
-        $reason = 'STATUS_NOT_ACTIVE';
+    $expirationDate = $context['vencimento'] ?? null;
+    if ($expirationDate === null || trim((string) $expirationDate) === '') {
+        $reason = 'VENCIMENTO_INVALID';
         return false;
     }
 
-    $expirationTimestamp = $context['exp_date'] ?? null;
-    if ($expirationTimestamp !== null) {
-        $expirationTimestamp = trim((string) $expirationTimestamp);
-        if ($expirationTimestamp === '' || !ctype_digit($expirationTimestamp)) {
-            $reason = 'EXP_DATE_INVALID';
-            return false;
-        }
-        if ((int) $expirationTimestamp <= time()) {
-            $reason = 'EXP_DATE_EXPIRED';
-            return false;
-        }
+    $businessTimezone = new DateTimeZone('America/Sao_Paulo');
+    $expirationDate = trim((string) $expirationDate);
+    $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expirationDate, $businessTimezone);
+    $parseErrors = DateTimeImmutable::getLastErrors();
+    if ($parsedDate === false
+        || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))) {
+        $reason = 'VENCIMENTO_INVALID';
+        return false;
     }
-
-    $expirationDate = $context['vencimento'] ?? null;
-    if ($expirationDate !== null) {
-        $expirationDate = trim((string) $expirationDate);
-        $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expirationDate);
-        $parseErrors = DateTimeImmutable::getLastErrors();
-        if ($parsedDate === false
-            || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))) {
-            $reason = 'VENCIMENTO_INVALID';
-            return false;
-        }
-        if ($parsedDate < new DateTimeImmutable('today')) {
-            $reason = 'VENCIMENTO_EXPIRED';
-            return false;
-        }
+    if ($parsedDate < new DateTimeImmutable('today', $businessTimezone)) {
+        $reason = 'VENCIMENTO_EXPIRED';
+        return false;
     }
 
     return true;

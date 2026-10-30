@@ -196,10 +196,7 @@ try {
     $validPassword = false;
     if ($client) {
         $storedPassword = (string) $client['senha'];
-        $validPassword = password_verify($password, $storedPassword);
-        if (!$validPassword && (password_get_info($storedPassword)['algoName'] ?? 'unknown') === 'unknown') {
-            $validPassword = hash_equals($storedPassword, $password);
-        }
+        $validPassword = samsungVerifyStoredClientPassword($password, $storedPassword);
     } else {
         password_verify($password, SAMSUNG_DUMMY_PASSWORD_HASH);
     }

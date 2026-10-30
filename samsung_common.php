@@ -5,6 +5,15 @@ declare(strict_types=1);
 const SAMSUNG_APP_TYPE = 'samsung';
 const SAMSUNG_TOKEN_TTL_SECONDS = 2592000;
 
+function samsungVerifyStoredClientPassword(string $password, string $storedPassword): bool
+{
+    $valid = password_verify($password, $storedPassword);
+    if (!$valid && (password_get_info($storedPassword)['algoName'] ?? 'unknown') === 'unknown') {
+        $valid = hash_equals($storedPassword, $password);
+    }
+    return $valid;
+}
+
 function samsungApplyCors(): void
 {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
@@ -34,6 +43,10 @@ function samsungCorsPolicy(): array
     return match (basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))) {
         'samsung_login.php' => ['methods' => ['POST'], 'headers' => ['Content-Type']],
         'samsung_logout.php' => ['methods' => ['POST'], 'headers' => ['Authorization']],
+        'samsung_verify_password.php' => [
+            'methods' => ['POST'],
+            'headers' => ['Authorization', 'Content-Type'],
+        ],
         'samsung_session.php', 'samsung_listar_sistemas.php',
         'samsung_live_categories.php', 'samsung_live_streams.php',
         'samsung_xtream_context.php' => [

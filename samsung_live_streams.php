@@ -160,6 +160,38 @@ function samsungNormalizeStreamName(mixed $value): ?string
     return $value !== '' && strlen($value) <= 500 ? $value : null;
 }
 
+function samsungNormalizeStreamIcon(mixed $value): ?string
+{
+    if (!is_string($value)) {
+        return null;
+    }
+
+    $value = trim($value);
+    if (
+        $value === ''
+        || strlen($value) > 2048
+        || preg_match('//u', $value) !== 1
+        || preg_match('/[\x00-\x1F\x7F]/', $value) === 1
+        || filter_var($value, FILTER_VALIDATE_URL) === false
+    ) {
+        return null;
+    }
+
+    $parts = parse_url($value);
+    if (
+        !is_array($parts)
+        || !isset($parts['scheme'], $parts['host'])
+        || !in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true)
+        || trim((string) $parts['host']) === ''
+        || isset($parts['user'])
+        || isset($parts['pass'])
+    ) {
+        return null;
+    }
+
+    return $value;
+}
+
 samsungRequireMethod('GET');
 
 if (
@@ -206,11 +238,16 @@ try {
         }
         $streamId = samsungNormalizeStreamId($item['stream_id'] ?? null);
         $name = samsungNormalizeStreamName($item['name'] ?? null);
+        $streamIcon = samsungNormalizeStreamIcon($item['stream_icon'] ?? null);
         if ($streamId === null || $name === null || isset($seen[$streamId])) {
             continue;
         }
         $seen[$streamId] = true;
-        $streams[] = ['stream_id' => $streamId, 'nome' => $name];
+        $stream = ['stream_id' => $streamId, 'nome' => $name];
+        if ($streamIcon !== null) {
+            $stream['stream_icon'] = $streamIcon;
+        }
+        $streams[] = $stream;
         if (count($streams) > 10000) {
             throw new SamsungXtreamException(502, 'INVALID_PROVIDER_RESPONSE', 'Resposta inválida do sistema', 'INVALID_RESPONSE');
         }

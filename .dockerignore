@@ -1,2 +1,6 @@
 tests/
 migrations/
+alterar_tabela_clientes_admin.php
+atualizar_clientes_admin_padrao.php
+criar_tabela_admins.php
+criar_tabela_clientes.php

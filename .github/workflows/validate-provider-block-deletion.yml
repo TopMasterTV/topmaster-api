@@ -1,0 +1,109 @@
+name: Validate provider block deletion
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-validation:
+    name: PHP 8.2 and PostgreSQL isolated validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: provider_blocks_test
+          POSTGRES_USER: provider_blocks_test
+          POSTGRES_PASSWORD: local_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U provider_blocks_test -d provider_blocks_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://provider_blocks_test:local_test_password@127.0.0.1:5432/provider_blocks_test
+      PROVIDER_BLOCKS_TEST_BASE_URL: http://127.0.0.1:8080
+
+    steps:
+      - name: Checkout validation source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql, curl
+          coverage: none
+          tools: none
+
+      - name: Enable TLS only on temporary PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_id="$(docker ps --filter ancestor=postgres:16-alpine --format '{{.ID}}' | head -n 1)"
+          test -n "$container_id"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj '/CN=127.0.0.1' \
+            -keyout /tmp/provider-blocks-server.key \
+            -out /tmp/provider-blocks-server.crt
+          chmod 600 /tmp/provider-blocks-server.key
+          docker cp /tmp/provider-blocks-server.key "$container_id:/var/lib/postgresql/server.key"
+          docker cp /tmp/provider-blocks-server.crt "$container_id:/var/lib/postgresql/server.crt"
+          docker exec --user root "$container_id" chown postgres:postgres \
+            /var/lib/postgresql/server.key /var/lib/postgresql/server.crt
+          docker exec --user postgres "$container_id" psql \
+            --dbname provider_blocks_test \
+            --command "ALTER SYSTEM SET ssl = 'on'" \
+            --command "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'" \
+            --command "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'"
+          docker restart "$container_id" >/dev/null
+          for attempt in {1..20}; do
+            if docker exec "$container_id" pg_isready \
+              -U provider_blocks_test -d provider_blocks_test >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$container_id"
+          exit 1
+
+      - name: Lint endpoint and tests
+        run: |
+          php -l excluir_bloco_provedor.php
+          php -l tests/provedor_blocos_backend_test.php
+          php -l tests/excluir_bloco_provedor_integration_test.php
+
+      - name: Run provider blocks contract test
+        run: php tests/provedor_blocos_backend_test.php
+
+      - name: Start isolated PHP server
+        run: |
+          php -S 127.0.0.1:8080 -t . > /tmp/provider-blocks-php.log 2>&1 &
+          echo $! > /tmp/provider-blocks-php.pid
+          for attempt in {1..20}; do
+            if curl --silent --output /dev/null http://127.0.0.1:8080/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/provider-blocks-php.log
+          exit 1
+
+      - name: Run isolated PostgreSQL integration test
+        run: php tests/excluir_bloco_provedor_integration_test.php
+
+      - name: Stop isolated PHP server
+        if: always()
+        run: |
+          if [ -f /tmp/provider-blocks-php.pid ]; then
+            kill "$(cat /tmp/provider-blocks-php.pid)" 2>/dev/null || true
+          fi

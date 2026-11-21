@@ -28,6 +28,7 @@ function fonteBlocos(string $arquivo): string
 
 $migration = fonteBlocos('migrations/012_criar_provedor_blocos.sql');
 $migracao = fonteBlocos('migrar_modelo_bloco.php');
+$exclusao = fonteBlocos('excluir_bloco_provedor.php');
 $helper = fonteBlocos('provedor_blocos_admin.php');
 
 verificarBlocos(
@@ -79,6 +80,39 @@ verificarBlocos(
     str_contains($migracao, 'CAST(:bloco_id_nulo AS BIGINT) IS NULL')
         && str_contains($migracao, "bindValue(':bloco_id_nulo', \$blocoId, \$blocoId === null ? PDO::PARAM_NULL : PDO::PARAM_INT)"),
     'migracao tipa bloco nulo e preserva suporte a destino real ou Sem bloco'
+);
+
+verificarBlocos(
+    str_contains($exclusao, 'beginTransaction()')
+        && str_contains($exclusao, 'commit()')
+        && str_contains($exclusao, 'rollBack()'),
+    'exclusao de bloco e atomica e faz rollback em falha'
+);
+verificarBlocos(
+    str_contains($exclusao, 'LOCK TABLE modelos_sistemas IN SHARE ROW EXCLUSIVE MODE')
+        && str_contains($exclusao, 'FOR UPDATE'),
+    'exclusao serializa criacao e migracao concorrentes e bloqueia o bloco'
+);
+verificarBlocos(
+    preg_match('/UPDATE\s+modelos_sistemas\s+SET\s+bloco_id\s*=\s*NULL\s+WHERE\s+bloco_id\s*=\s*:bloco_id/is', $exclusao) === 1
+        && !str_contains($exclusao, 'DELETE FROM modelos_sistemas')
+        && !str_contains($exclusao, 'DELETE FROM sistemas'),
+    'exclusao transfere modelos para Sem bloco sem excluir modelos ou clientes'
+);
+verificarBlocos(
+    str_contains($exclusao, "'MODEL_COUNT_MISMATCH'")
+        && str_contains($exclusao, "'modelos_transferidos'"),
+    'exclusao valida e retorna a quantidade transferida'
+);
+verificarBlocos(
+    str_contains($exclusao, "idProvedorBlocos(\$dados, 'id')")
+        && str_contains($exclusao, "404, 'BLOCK_NOT_FOUND'"),
+    'exclusao valida o ID e rejeita bloco inexistente'
+);
+verificarBlocos(
+    str_contains($exclusao, "require_once __DIR__ . '/provedor_blocos_admin.php'")
+        && str_contains($helper, 'exigirMasterProvedorBlocos($pdo)'),
+    'exclusao reutiliza POST JSON e autenticacao Master'
 );
 
 $legadoListar = fonteBlocos('listar_modelos_sistemas.php');

@@ -11,7 +11,7 @@ executarEndpointProvedorBlocos(static function (PDO $pdo, array $dados): array {
         'UPDATE modelos_sistemas
          SET bloco_id = :bloco_id
          WHERE id = :modelo_id
-           AND (:bloco_id_nulo IS NULL OR EXISTS (
+           AND (CAST(:bloco_id_nulo AS BIGINT) IS NULL OR EXISTS (
                SELECT 1 FROM provedor_blocos WHERE id = :bloco_id_existente
            ))
          RETURNING id, nome, url_padrao, bloco_id'

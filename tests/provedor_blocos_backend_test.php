@@ -75,6 +75,11 @@ verificarBlocos(
         && !str_contains($migracao, 'DELETE FROM modelos_sistemas'),
     'endpoint de migracao nao recria nem exclui modelos'
 );
+verificarBlocos(
+    str_contains($migracao, 'CAST(:bloco_id_nulo AS BIGINT) IS NULL')
+        && str_contains($migracao, "bindValue(':bloco_id_nulo', \$blocoId, \$blocoId === null ? PDO::PARAM_NULL : PDO::PARAM_INT)"),
+    'migracao tipa bloco nulo e preserva suporte a destino real ou Sem bloco'
+);
 
 $legadoListar = fonteBlocos('listar_modelos_sistemas.php');
 $legadoCriar = fonteBlocos('criar_modelo_sistema.php');

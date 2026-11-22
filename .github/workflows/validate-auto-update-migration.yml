@@ -1,0 +1,89 @@
+name: Validate automatic update migration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgresql-validation:
+    name: PostgreSQL 16 isolated migration validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: automatic_update_test
+          POSTGRES_USER: automatic_update_test
+          POSTGRES_PASSWORD: local_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U automatic_update_test -d automatic_update_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: automatic_update_test
+      PGUSER: automatic_update_test
+      PGPASSWORD: local_test_password
+
+    steps:
+      - name: Checkout validation source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Create minimum isolated dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql --set ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE admins (
+              id SERIAL PRIMARY KEY
+          );
+          SQL
+
+      - name: Confirm customer tables are absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(psql --tuples-only --no-align --command "SELECT to_regclass('public.clientes') IS NULL AND to_regclass('public.sistemas') IS NULL")" = "t"
+
+      - name: Apply migration first time
+        run: psql --set ON_ERROR_STOP=1 --file migrations/013_criar_atualizacao_automatica_config.sql
+
+      - name: Capture singleton before repeated migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql --tuples-only --no-align --command \
+            "SELECT id, ativada, ativado_em, desativado_em, proxima_execucao, versao_ciclo, atualizado_em, atualizado_por_admin_id FROM atualizacao_automatica_config ORDER BY id" \
+            > /tmp/automatic-update-before.txt
+
+      - name: Apply migration second time
+        run: psql --set ON_ERROR_STOP=1 --file migrations/013_criar_atualizacao_automatica_config.sql
+
+      - name: Prove repeated migration preserved singleton
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql --tuples-only --no-align --command \
+            "SELECT id, ativada, ativado_em, desativado_em, proxima_execucao, versao_ciclo, atualizado_em, atualizado_por_admin_id FROM atualizacao_automatica_config ORDER BY id" \
+            > /tmp/automatic-update-after.txt
+          diff --unified /tmp/automatic-update-before.txt /tmp/automatic-update-after.txt
+
+      - name: Validate schema constraints and rejected states
+        run: psql --set ON_ERROR_STOP=1 --file tests/atualizacao_automatica_migration_integration_test.sql
+
+      - name: Confirm customer tables remain absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(psql --tuples-only --no-align --command "SELECT to_regclass('public.clientes') IS NULL AND to_regclass('public.sistemas') IS NULL")" = "t"

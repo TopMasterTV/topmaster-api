@@ -1,0 +1,41 @@
+name: Validate automatic update control
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-validation:
+    name: PHP 8.2 isolated validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout validation source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: none
+
+      - name: Lint Gate 68 PHP files
+        run: |
+          php -l atualizacao_automatica_config_repository.php
+          php -l consultar_atualizacao_automatica.php
+          php -l ativar_atualizacao_automatica.php
+          php -l desativar_atualizacao_automatica.php
+          php -l tests/atualizacao_automatica_repository_test.php
+          php -l tests/atualizacao_automatica_contract_test.php
+
+      - name: Run automatic update repository test
+        run: php tests/atualizacao_automatica_repository_test.php
+
+      - name: Run automatic update contract test
+        run: php tests/atualizacao_automatica_contract_test.php

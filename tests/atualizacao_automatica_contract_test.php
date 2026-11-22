@@ -57,10 +57,28 @@ verificarContratoAutomacao(
     preg_match('/\b(?:clientes|sistemas)\b/i', $migration) !== 1,
     'migration nao referencia clientes ou sistemas'
 );
+$padraoSqlDestrutivo = '/(?:\A|;)\s*(?:DROP\b|TRUNCATE(?:\s+TABLE)?\b|DELETE\s+FROM\b)/i';
 verificarContratoAutomacao(
-    preg_match('/\b(?:DROP|TRUNCATE|DELETE)\b/i', $migration) !== 1,
+    preg_match($padraoSqlDestrutivo, $migration) !== 1,
     'migration nao contem operacoes destrutivas'
 );
+verificarContratoAutomacao(
+    preg_match(
+        $padraoSqlDestrutivo,
+        'ALTER TABLE config ADD FOREIGN KEY (admin_id) REFERENCES admins (id) ON DELETE SET NULL;'
+    ) !== 1,
+    'acao referencial ON DELETE nao e confundida com comando DELETE FROM'
+);
+foreach ([
+    'DROP TABLE atualizacao_automatica_config;',
+    'TRUNCATE TABLE atualizacao_automatica_config;',
+    'DELETE FROM atualizacao_automatica_config;',
+] as $sqlDestrutivo) {
+    verificarContratoAutomacao(
+        preg_match($padraoSqlDestrutivo, $sqlDestrutivo) === 1,
+        'verificacao rejeita SQL destrutivo real'
+    );
+}
 
 foreach ($endpoints as $endpoint) {
     verificarContratoAutomacao(

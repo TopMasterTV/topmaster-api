@@ -1,0 +1,31 @@
+name: Validate automatic update executor
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: none
+      - name: Lint executor files
+        run: |
+          php -l atualizacao_automatica_executor.php
+          php -l executar_atualizacao_automatica.php
+          php -l tests/atualizacao_automatica_executor_test.php
+          php -l tests/atualizacao_automatica_executor_contract_test.php
+      - name: Run isolated tests
+        run: |
+          php tests/atualizacao_automatica_executor_test.php
+          php tests/atualizacao_automatica_executor_contract_test.php

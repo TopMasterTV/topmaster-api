@@ -52,6 +52,7 @@ jobs:
           php -l auth_admin.php
           php -l auth_revendedor.php
           php -l logout_administrativo.php
+          php -l renovar_sessao_master.php
           php -l editar_admin.php
           php -l editar_revendedor.php
           php -l reset_senha_admin_master.php

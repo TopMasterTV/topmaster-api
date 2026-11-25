@@ -86,9 +86,8 @@ $autenticacaoAdministrativa = [];
 
 if ($admin['tipo'] === 'master') {
     try {
-        $autenticacaoAdministrativa = emitirTokenAdministrativo(
+        $autenticacaoAdministrativa = emitirSessaoMaster(
             $pdo,
-            'master',
             (int) $admin['id']
         );
     } catch (Throwable $e) {

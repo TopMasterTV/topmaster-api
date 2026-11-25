@@ -24,8 +24,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     ]);
 }
 
+$conteudo = file_get_contents('php://input');
+$json = is_string($conteudo) && $conteudo !== '' ? json_decode($conteudo, true) : null;
+$refreshToken = $_POST['refresh_token'] ?? (is_array($json) ? ($json['refresh_token'] ?? null) : null);
+if ($refreshToken !== null && !is_string($refreshToken)) {
+    responderLogoutAdministrativo(400, [
+        'success' => false,
+        'code' => 'INVALID_REFRESH_TOKEN',
+        'message' => 'Token de renovacao invalido',
+    ]);
+}
+
 try {
-    revogarTokenAdministrativoApresentado($pdo);
+    revogarCredenciaisAdministrativasApresentadas($pdo, $refreshToken);
 } catch (AdministrativeAuthException $e) {
     responderLogoutAdministrativo($e->getStatusHttp(), [
         'success' => false,

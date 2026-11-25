@@ -555,14 +555,28 @@ $pdo->beginTransaction();
 revogarTokensAdministrativosDoAtor($pdo, 'master', 1);
 $pdo->commit();
 $ativosPorAtor = $pdo->query(<<<'SQL'
-    SELECT actor_type, COUNT(*) FILTER (WHERE revogado_em IS NULL) AS ativos
+    SELECT
+        COUNT(*) FILTER (
+            WHERE actor_type = 'master'
+              AND actor_id = 1
+              AND revogado_em IS NULL
+        ) AS master_um_ativos,
+        COUNT(*) FILTER (
+            WHERE actor_type = 'master'
+              AND actor_id = 3
+              AND revogado_em IS NULL
+        ) AS master_tres_ativos,
+        COUNT(*) FILTER (
+            WHERE actor_type = 'revendedor'
+              AND actor_id = 2
+              AND revogado_em IS NULL
+        ) AS revendedor_dois_ativos
     FROM administrative_tokens
-    GROUP BY actor_type
-    ORDER BY actor_type
-    SQL)->fetchAll();
+    SQL)->fetch();
 exigirSessaoAdministrativa(
-    (int) $ativosPorAtor[0]['ativos'] === 0
-        && (int) $ativosPorAtor[1]['ativos'] === 2,
+    (int) $ativosPorAtor['master_um_ativos'] === 0
+        && (int) $ativosPorAtor['master_tres_ativos'] === 1
+        && (int) $ativosPorAtor['revendedor_dois_ativos'] === 2,
     'revogacao por ator separa Master e Revendedor'
 );
 $refreshAtivosMaster = $pdo->query(<<<'SQL'

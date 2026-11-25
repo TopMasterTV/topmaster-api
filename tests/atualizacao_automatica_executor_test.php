@@ -1,92 +1,38 @@
 <?php
-
 declare(strict_types=1);
+require_once dirname(__DIR__).'/atualizacao_automatica_executor.php';
 
-require_once dirname(__DIR__) . '/atualizacao_automatica_executor.php';
-
-function exigirExecutor(bool $condicao, string $mensagem): void
-{
-    if (!$condicao) {
-        throw new RuntimeException('FALHA: ' . $mensagem);
-    }
-    fwrite(STDOUT, 'OK: ' . $mensagem . PHP_EOL);
+function ok(bool $c,string $m):void{if(!$c)throw new RuntimeException('FALHA: '.$m);fwrite(STDOUT,'OK: '.$m.PHP_EOL);}
+final class StoreFake implements AtualizacaoAutomaticaExecutorStore{
+ public array $reserva=['estado'=>'reservado','ciclo_id'=>10,'versao_ciclo'=>1,'grupo'=>'A','tipo'=>'grade'];public array $sistemas=[],$pendencias=[],$resultados=[],$resolvidas=[];public ?array $totais=null;public array $ativa=[];private int $checks=0;
+ public function reservarCiclo():array{return $this->reserva;}
+ public function listarSistemasElegiveis(bool $r):array{return $this->sistemas;}
+ public function registrarPendencias(int $c,string $g,array $ids,string $m):void{foreach($ids as $id)$this->pendencias[$id]=$m;}
+ public function automacaoAtiva(int $v):bool{return $this->ativa[$this->checks++]??true;}
+ public function resolverPendencia(int $id):void{$this->resolvidas[]=$id;unset($this->pendencias[$id]);}
+ public function registrarResultado(int $c,array $s,array $r):void{$this->resultados[]=[$s,$r];}
+ public function finalizarCiclo(int $c,array $t):void{$this->totais=$t;}
 }
+final class UpdaterFake implements AtualizacaoAutomaticaSistemaUpdater{public array $ids=[],$falhas=[];public function atualizar(array $s):array{$id=(int)$s['sistema_id'];$this->ids[]=$id;if(in_array($id,$this->falhas,true))throw new RuntimeException();return ['status'=>'atualizado'];}}
+function sis(int $cliente,int $sistema,string $nome):array{return ['cliente_id'=>$cliente,'sistema_id'=>$sistema,'cliente_nome'=>$nome,'provedor'=>'qualquer'];}
 
-final class ExecutorStoreFake implements AtualizacaoAutomaticaExecutorStore
-{
-    public array $reserva = ['estado' => 'reservado', 'ciclo_id' => 10];
-    public array $sistemas = [];
-    public array $resultados = [];
-    public ?array $totais = null;
+foreach([0=>'A',1=>'B',2=>'C',8=>'IJ',9=>'KL',14=>'QR',17=>'UV',19=>'XY',20=>'Z',21=>'#',23=>'#']as$h=>$g)ok(AtualizacaoAutomaticaGrade::grupoDaHora($h)===$g,"grade da hora {$h}");
+ok(AtualizacaoAutomaticaGrade::inicialNormalizada('Álvaro')==='A','normaliza acento');
+ok(AtualizacaoAutomaticaGrade::inicialNormalizada('Çesar')==='C','normaliza cedilha');
+ok(AtualizacaoAutomaticaGrade::inicialNormalizada('123 Cliente')==='#','nome numerico vai para recuperacao');
 
-    public function reservarCiclo(): array { return $this->reserva; }
-    public function listarSistemasElegiveis(int $limiteBusca): array
-    {
-        return array_slice($this->sistemas, 0, $limiteBusca);
-    }
-    public function registrarResultado(int $cicloId, array $sistema, array $resultado): void
-    {
-        $this->resultados[] = compact('cicloId', 'sistema', 'resultado');
-    }
-    public function finalizarCiclo(int $cicloId, array $totais): void { $this->totais = $totais; }
-}
+$s=new StoreFake();$s->reserva=['estado'=>'desativada'];$u=new UpdaterFake();$r=(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($r['estado']==='desativada'&&$u->ids===[],'desativada impede consultas');
 
-final class ExecutorUpdaterFake implements AtualizacaoAutomaticaSistemaUpdater
-{
-    public array $processados = [];
-    public array $falharIds = [];
-    public function atualizar(array $sistema): array
-    {
-        $id = (int) $sistema['sistema_id'];
-        $this->processados[] = $id;
-        if (in_array($id, $this->falharIds, true)) {
-            throw new RuntimeException('falha sintetica');
-        }
-        return ['status' => 'atualizado', 'vencimento_novo' => '2027-01-01'];
-    }
-}
+$s=new StoreFake();for($i=1;$i<=26;$i++){$s->sistemas[]=sis($i,$i*10,'Ana '.$i);$s->sistemas[]=sis($i,$i*10+1,'Ana '.$i);} $u=new UpdaterFake();$r=(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($r['processados']===25,'limita 25 clientes distintos');ok(count($u->ids)===50,'processa todos os sistemas dos 25 clientes');ok(($s->pendencias[26]??null)==='excedente','registra cliente excedente');
 
-function sistemaExecutor(int $id, string $provedor): array
-{
-    return ['sistema_id' => $id, 'cliente_id' => $id, 'provedor' => $provedor];
-}
+$s=new StoreFake();$s->sistemas=[sis(1,1,'Ana'),sis(2,2,'Bruno'),sis(3,3,'Ágata')];$u=new UpdaterFake();(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($u->ids===[1,3],'seleciona letra e acento do horario');
 
-$storeInativo = new ExecutorStoreFake();
-$storeInativo->reserva = ['estado' => 'desativada'];
-$updaterInativo = new ExecutorUpdaterFake();
-$resultadoInativo = (new AtualizacaoAutomaticaExecutor($storeInativo, $updaterInativo))->executarUmCiclo();
-exigirExecutor($resultadoInativo['estado'] === 'desativada', 'funcao desativada impede ciclo');
-exigirExecutor($updaterInativo->processados === [], 'funcao desativada nao consulta provedor');
+$s=new StoreFake();$s->sistemas=[sis(1,1,'123 Cliente')];$u=new UpdaterFake();(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok(($s->pendencias[1]??null)==='excedente'&&$u->ids===[],'encaminha nome nao alfabetico para recuperacao');
 
-$storeElegiveis = new ExecutorStoreFake();
-$storeElegiveis->sistemas = [sistemaExecutor(1, 'GP TOP'), sistemaExecutor(2, 'OUTRO')];
-$updaterElegiveis = new ExecutorUpdaterFake();
-$resultadoElegiveis = (new AtualizacaoAutomaticaExecutor(
-    $storeElegiveis,
-    $updaterElegiveis,
-    ['GP' => 5, '*' => 25],
-))->executarUmCiclo();
-exigirExecutor($updaterElegiveis->processados === [1, 2], 'somente elegiveis fornecidos sao processados');
-exigirExecutor($resultadoElegiveis['processados'] === 2, 'total processado e registrado');
+$s=new StoreFake();$s->reserva=['estado'=>'reservado','ciclo_id'=>10,'versao_ciclo'=>1,'grupo'=>'#','tipo'=>'recuperacao'];$pendente=sis(1,1,'Bruno');$pendente['pendente']=true;$s->sistemas=[$pendente,sis(2,2,'123'),sis(3,3,'Carlos')];$u=new UpdaterFake();(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($u->ids===[1,2],'recuperacao processa pendencia ou nome nao alfabetico');
 
-$storeLimites = new ExecutorStoreFake();
-$storeLimites->sistemas = [
-    sistemaExecutor(1, 'GP'), sistemaExecutor(2, 'GP TOP'), sistemaExecutor(3, 'GP'),
-    sistemaExecutor(4, 'ALFA'), sistemaExecutor(5, 'ALFA'),
-];
-$updaterLimites = new ExecutorUpdaterFake();
-(new AtualizacaoAutomaticaExecutor(
-    $storeLimites,
-    $updaterLimites,
-    ['GP' => 2, '*' => 1],
-))->executarUmCiclo();
-exigirExecutor($updaterLimites->processados === [1, 2, 4], 'limites por provedor sao respeitados');
+$s=new StoreFake();$s->sistemas=[sis(1,1,'Ana'),sis(2,2,'Ana')];$s->ativa=[true,true,false];$u=new UpdaterFake();$r=(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($u->ids===[1],'desativacao durante ciclo impede nova consulta');ok(($s->pendencias[2]??null)==='interrompido','preserva pendencia legitima interrompida');
 
-$storeFalha = new ExecutorStoreFake();
-$storeFalha->sistemas = [sistemaExecutor(1, 'A'), sistemaExecutor(2, 'B')];
-$updaterFalha = new ExecutorUpdaterFake();
-$updaterFalha->falharIds = [1];
-$resultadoFalha = (new AtualizacaoAutomaticaExecutor($storeFalha, $updaterFalha))->executarUmCiclo();
-exigirExecutor($updaterFalha->processados === [1, 2], 'falha isolada nao interrompe ciclo');
-exigirExecutor($resultadoFalha['falhas'] === 1 && $resultadoFalha['atualizados'] === 1, 'falha e sucesso sao contabilizados');
-exigirExecutor(count($storeFalha->resultados) === 2, 'cada tentativa gera historico');
+$s=new StoreFake();$s->sistemas=[sis(1,1,'Ana'),sis(2,2,'Ana')];$u=new UpdaterFake();$u->falhas=[1];$r=(new AtualizacaoAutomaticaExecutor($s,$u))->executarUmCiclo();ok($u->ids===[1,2]&&$r['falhas']===1,'falha individual nao interrompe ciclo');ok(count($s->resultados)===2,'registra resultados individuais');
+
+$fonte=file_get_contents(dirname(__DIR__).'/atualizacao_automatica_executor.php');ok(!str_contains($fonte,"'GP' => 5")&&!str_contains($fonte,'limitesPorProvedor'),'remove limites separados por provedor');

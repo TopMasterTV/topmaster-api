@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS atualizacao_automatica_ciclos (
     iniciado_em TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     finalizado_em TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL DEFAULT 'executando',
+    tipo VARCHAR(20) NOT NULL DEFAULT 'grade',
+    grupo VARCHAR(20) NOT NULL,
     total_elegiveis INTEGER NOT NULL DEFAULT 0,
     total_processados INTEGER NOT NULL DEFAULT 0,
     total_atualizados INTEGER NOT NULL DEFAULT 0,
@@ -14,6 +16,8 @@ CREATE TABLE IF NOT EXISTS atualizacao_automatica_ciclos (
     CONSTRAINT uq_atualizacao_automatica_ciclo UNIQUE (versao_ciclo, agendado_para),
     CONSTRAINT ck_atualizacao_automatica_ciclo_status
         CHECK (status IN ('executando', 'concluido', 'falhou')),
+    CONSTRAINT ck_atualizacao_automatica_ciclo_tipo
+        CHECK (tipo IN ('grade', 'recuperacao')),
     CONSTRAINT ck_atualizacao_automatica_ciclo_totais CHECK (
         total_elegiveis >= 0
         AND total_processados >= 0
@@ -21,6 +25,25 @@ CREATE TABLE IF NOT EXISTS atualizacao_automatica_ciclos (
         AND total_falhas >= 0
     )
 );
+
+CREATE TABLE IF NOT EXISTS atualizacao_automatica_pendencias (
+    cliente_id INTEGER PRIMARY KEY,
+    ciclo_origem_id BIGINT NOT NULL,
+    grupo_origem VARCHAR(20) NOT NULL,
+    motivo VARCHAR(30) NOT NULL,
+    criada_em TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    atualizada_em TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT fk_atualizacao_pendencia_cliente
+        FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE,
+    CONSTRAINT fk_atualizacao_pendencia_ciclo
+        FOREIGN KEY (ciclo_origem_id) REFERENCES atualizacao_automatica_ciclos (id)
+        ON DELETE CASCADE,
+    CONSTRAINT ck_atualizacao_pendencia_motivo
+        CHECK (motivo IN ('selecionado', 'excedente', 'falha', 'interrompido'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_atualizacao_pendencias_ordem
+    ON atualizacao_automatica_pendencias (criada_em, cliente_id);
 
 CREATE TABLE IF NOT EXISTS atualizacao_automatica_resultados (
     id BIGSERIAL PRIMARY KEY,

@@ -1,0 +1,42 @@
+name: Validate automatic update on PostgreSQL 18
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgres-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: topmaster_auto_update_test
+          POSTGRES_USER: topmaster_test
+          POSTGRES_PASSWORD: isolated_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topmaster_test -d topmaster_auto_update_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://topmaster_test:isolated_test_password@127.0.0.1:5432/topmaster_auto_update_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql
+          coverage: none
+          tools: none
+      - name: Lint isolated integration test
+        run: php -l tests/atualizacao_automatica_postgres18_integration_test.php
+      - name: Run isolated PostgreSQL 18 integration test
+        run: php tests/atualizacao_automatica_postgres18_integration_test.php

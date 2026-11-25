@@ -40,3 +40,7 @@ jobs:
         run: php -l tests/atualizacao_automatica_postgres18_integration_test.php
       - name: Run isolated PostgreSQL 18 integration test
         run: php tests/atualizacao_automatica_postgres18_integration_test.php
+      - name: Lint isolated history integration test
+        run: php -l tests/atualizacao_automatica_historico_postgres18_integration_test.php
+      - name: Run isolated PostgreSQL 18 history test
+        run: php tests/atualizacao_automatica_historico_postgres18_integration_test.php

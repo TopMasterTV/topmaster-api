@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const ADMINISTRATIVE_TOKEN_TTL_SECONDS = 43200;
+const ADMINISTRATIVE_TOKEN_TTL_SECONDS = 604800;
 
 final class AdministrativeAuthException extends RuntimeException
 {
@@ -53,13 +53,16 @@ function emitirTokenAdministrativo(PDO $pdo, string $actorType, int $actorId): a
             :actor_type,
             :actor_id,
             :token_hash,
-            clock_timestamp() + INTERVAL '12 hours'
+            clock_timestamp() + (
+                CAST(:ttl_seconds AS BIGINT) * INTERVAL '1 second'
+            )
         )
         SQL);
     $insercao->execute([
         ':actor_type' => $actorType,
         ':actor_id' => $actorId,
         ':token_hash' => $tokenHash,
+        ':ttl_seconds' => ADMINISTRATIVE_TOKEN_TTL_SECONDS,
     ]);
 
     return [
@@ -170,4 +173,39 @@ function autenticarTokenAdministrativo(PDO $pdo): array
         'actor_id' => (int) $sessao['actor_id'],
         'expira_em' => $sessao['expira_em'],
     ];
+}
+
+function revogarTokenAdministrativoApresentado(PDO $pdo): void
+{
+    $tokenOriginal = extrairTokenBearerAdministrativo();
+    $tokenHash = hash('sha256', $tokenOriginal);
+
+    $revogacao = $pdo->prepare(<<<'SQL'
+        UPDATE administrative_tokens
+        SET revogado_em = COALESCE(revogado_em, clock_timestamp())
+        WHERE token_hash = :token_hash
+        SQL);
+    $revogacao->execute([':token_hash' => $tokenHash]);
+}
+
+function revogarTokensAdministrativosDoAtor(
+    PDO $pdo,
+    string $actorType,
+    int $actorId
+): void {
+    if (!in_array($actorType, ['master', 'revendedor'], true) || $actorId <= 0) {
+        throw new InvalidArgumentException('Ator administrativo invalido');
+    }
+
+    $revogacao = $pdo->prepare(<<<'SQL'
+        UPDATE administrative_tokens
+        SET revogado_em = clock_timestamp()
+        WHERE actor_type = :actor_type
+          AND actor_id = :actor_id
+          AND revogado_em IS NULL
+        SQL);
+    $revogacao->execute([
+        ':actor_type' => $actorType,
+        ':actor_id' => $actorId,
+    ]);
 }

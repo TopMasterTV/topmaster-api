@@ -1,6 +1,8 @@
 <?php
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/administrative_token_auth.php';
+
 $DATABASE_URL = getenv('DATABASE_URL');
 
 if (!$DATABASE_URL) {
@@ -31,16 +33,29 @@ try {
     $novaSenha = "123456";
 
     $hash = password_hash($novaSenha, PASSWORD_DEFAULT);
+    if ($hash === false) {
+        throw new RuntimeException('Falha ao gerar hash');
+    }
+
+    $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("
         UPDATE admins 
         SET senha = :senha 
         WHERE tipo = 'master'
+        RETURNING id
     ");
 
     $stmt->execute([
         ':senha' => $hash
     ]);
+
+    $mastersAtualizados = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($mastersAtualizados as $masterId) {
+        revogarTokensAdministrativosDoAtor($pdo, 'master', (int) $masterId);
+    }
+
+    $pdo->commit();
 
     echo json_encode([
         "success" => true,
@@ -48,7 +63,10 @@ try {
         "nova_senha" => $novaSenha
     ]);
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     echo json_encode([
         "success" => false,
         "message" => "Erro ao resetar senha"

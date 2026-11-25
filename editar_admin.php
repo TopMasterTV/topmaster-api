@@ -76,6 +76,8 @@ if ($senha !== '' && !senhaAdminDentroDoLimite($senha)) {
 }
 
 try {
+    $pdo->beginTransaction();
+
     if ($senha !== '') {
         $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
         if ($senhaHash === false) {
@@ -89,6 +91,7 @@ try {
                 senha = :senha,
                 senha_visivel = :senha_visivel
             WHERE id = :id
+            RETURNING tipo
             SQL);
         $stmt->execute([
             ':nome' => $nome,
@@ -103,6 +106,7 @@ try {
             SET nome = :nome,
                 usuario = :usuario
             WHERE id = :id
+            RETURNING tipo
             SQL);
         $stmt->execute([
             ':nome' => $nome,
@@ -110,19 +114,30 @@ try {
             ':id' => $id,
         ]);
     }
+
+    $tipoAdmin = $stmt->fetchColumn();
+    if ($tipoAdmin === false) {
+        $pdo->rollBack();
+        responderEdicaoAdmin(404, [
+            'success' => false,
+            'code' => 'ADMIN_NOT_FOUND',
+            'message' => 'Administrador não encontrado',
+        ]);
+    }
+
+    if ($senha !== '' && in_array($tipoAdmin, ['master', 'revendedor'], true)) {
+        revogarTokensAdministrativosDoAtor($pdo, (string) $tipoAdmin, (int) $id);
+    }
+
+    $pdo->commit();
 } catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     responderEdicaoAdmin(500, [
         'success' => false,
         'code' => 'INTERNAL_ERROR',
         'message' => 'Erro ao atualizar administrador',
-    ]);
-}
-
-if ($stmt->rowCount() === 0) {
-    responderEdicaoAdmin(404, [
-        'success' => false,
-        'code' => 'ADMIN_NOT_FOUND',
-        'message' => 'Administrador não encontrado',
     ]);
 }
 

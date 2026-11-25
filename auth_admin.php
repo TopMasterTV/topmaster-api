@@ -93,6 +93,12 @@ if ($admin['tipo'] === 'master') {
         );
     } catch (Throwable $e) {
         error_log('Falha ao emitir token administrativo');
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Erro ao iniciar sessao administrativa',
+        ]);
+        exit;
     }
 }
 

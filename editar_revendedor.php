@@ -2,6 +2,8 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/administrative_token_auth.php';
+
 $id = filter_var(
     $_POST['id'] ?? null,
     FILTER_VALIDATE_INT,
@@ -60,52 +62,68 @@ if ($check->fetch()) {
     exit;
 }
 
-if ($senha !== '') {
-    $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-    if ($senhaHash === false) {
-        http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Erro ao atualizar revendedor']);
+try {
+    $pdo->beginTransaction();
+
+    if ($senha !== '') {
+        $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
+        if ($senhaHash === false) {
+            throw new RuntimeException('Falha ao gerar hash');
+        }
+
+        $upd = $pdo->prepare(<<<'SQL'
+            UPDATE admins
+            SET nome = :nome,
+                usuario = :usuario,
+                senha = :senha,
+                senha_visivel = :senha_visivel,
+                whatsapp = :whatsapp
+            WHERE id = :id
+              AND tipo = 'revendedor'
+            SQL);
+        $upd->execute([
+            ':nome' => $nome,
+            ':usuario' => $usuario,
+            ':senha' => $senhaHash,
+            ':senha_visivel' => $senha,
+            ':whatsapp' => $whatsapp,
+            ':id' => $id,
+        ]);
+    } else {
+        $upd = $pdo->prepare(<<<'SQL'
+            UPDATE admins
+            SET nome = :nome,
+                usuario = :usuario,
+                whatsapp = :whatsapp
+            WHERE id = :id
+              AND tipo = 'revendedor'
+            SQL);
+        $upd->execute([
+            ':nome' => $nome,
+            ':usuario' => $usuario,
+            ':whatsapp' => $whatsapp,
+            ':id' => $id,
+        ]);
+    }
+
+    if ($upd->rowCount() === 0) {
+        $pdo->rollBack();
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Revendedor não encontrado']);
         exit;
     }
 
-    $upd = $pdo->prepare(<<<'SQL'
-        UPDATE admins
-        SET nome = :nome,
-            usuario = :usuario,
-            senha = :senha,
-            senha_visivel = :senha_visivel,
-            whatsapp = :whatsapp
-        WHERE id = :id
-          AND tipo = 'revendedor'
-        SQL);
-    $upd->execute([
-        ':nome' => $nome,
-        ':usuario' => $usuario,
-        ':senha' => $senhaHash,
-        ':senha_visivel' => $senha,
-        ':whatsapp' => $whatsapp,
-        ':id' => $id,
-    ]);
-} else {
-    $upd = $pdo->prepare(<<<'SQL'
-        UPDATE admins
-        SET nome = :nome,
-            usuario = :usuario,
-            whatsapp = :whatsapp
-        WHERE id = :id
-          AND tipo = 'revendedor'
-        SQL);
-    $upd->execute([
-        ':nome' => $nome,
-        ':usuario' => $usuario,
-        ':whatsapp' => $whatsapp,
-        ':id' => $id,
-    ]);
-}
+    if ($senha !== '') {
+        revogarTokensAdministrativosDoAtor($pdo, 'revendedor', (int) $id);
+    }
 
-if ($upd->rowCount() === 0) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'Revendedor não encontrado']);
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Erro ao atualizar revendedor']);
     exit;
 }
 

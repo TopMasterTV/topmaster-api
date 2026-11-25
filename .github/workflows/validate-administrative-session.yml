@@ -1,0 +1,65 @@
+name: Validate administrative session
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-validation:
+    name: PHP 8.2 and PostgreSQL 18 isolated validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: administrative_session_test
+          POSTGRES_USER: administrative_session_test
+          POSTGRES_PASSWORD: local_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U administrative_session_test -d administrative_session_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ADMIN_SESSION_TEST_DSN: pgsql:host=127.0.0.1;port=5432;dbname=administrative_session_test
+      ADMIN_SESSION_TEST_USER: administrative_session_test
+      ADMIN_SESSION_TEST_PASSWORD: local_test_password
+
+    steps:
+      - name: Checkout validation source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql
+          coverage: none
+          tools: none
+
+      - name: Lint administrative session files
+        run: |
+          php -l administrative_token_auth.php
+          php -l auth_admin.php
+          php -l auth_revendedor.php
+          php -l logout_administrativo.php
+          php -l editar_admin.php
+          php -l editar_revendedor.php
+          php -l reset_senha_admin_master.php
+          php -l tests/administrative_session_contract_test.php
+          php -l tests/administrative_session_integration_test.php
+
+      - name: Run administrative session contract test
+        run: php tests/administrative_session_contract_test.php
+
+      - name: Run isolated PostgreSQL integration test
+        run: php tests/administrative_session_integration_test.php

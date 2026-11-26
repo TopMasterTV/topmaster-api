@@ -39,9 +39,9 @@ exigirContratoExecutor(
     'reativacao agenda somente a proxima hora cheia em nova versao'
 );
 exigirContratoExecutor(
-    str_contains($executor, 's.vencimento IS NULL OR s.vencimento<=CURRENT_DATE')
+    !str_contains($executor, 's.vencimento IS NULL OR s.vencimento<=CURRENT_DATE')
         && str_contains($executor, 'elegivel_novamente_em<=clock_timestamp()'),
-    'consulta seleciona somente sistemas elegiveis e evita repeticao'
+    'consulta inclui sistemas nao vencidos e preserva janela de repeticao'
 );
 exigirContratoExecutor(
     str_contains($executor, 'private readonly int $limiteClientes = 25')

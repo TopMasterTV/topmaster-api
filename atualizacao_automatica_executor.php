@@ -134,7 +134,7 @@ final class AtualizacaoAutomaticaPdoStore implements AtualizacaoAutomaticaExecut
     public function listarSistemasElegiveis(bool $recuperacao): array {
         $pendencia = $recuperacao ? 'LEFT JOIN atualizacao_automatica_pendencias p ON p.cliente_id=c.id' : '';
         $campoPendencia = $recuperacao ? '(p.cliente_id IS NOT NULL)' : 'FALSE';
-        $sql = "SELECT s.id sistema_id,s.cliente_id,c.nome cliente_nome,{$campoPendencia} pendente,s.usuario,s.senha,s.m3u_url,s.vencimento vencimento_anterior,s.url,COALESCE(b.nome,m.nome,'SEM_PROVEDOR') provedor FROM sistemas s INNER JOIN clientes c ON c.id=s.cliente_id {$pendencia} LEFT JOIN modelos_sistemas m ON m.id=s.modelo_id LEFT JOIN provedor_blocos b ON b.id=m.bloco_id LEFT JOIN LATERAL (SELECT r.elegivel_novamente_em FROM atualizacao_automatica_resultados r WHERE r.sistema_id=s.id ORDER BY r.verificado_em DESC LIMIT 1) ultimo ON TRUE WHERE (s.vencimento IS NULL OR s.vencimento<=CURRENT_DATE) AND (ultimo.elegivel_novamente_em IS NULL OR ultimo.elegivel_novamente_em<=clock_timestamp()) ORDER BY c.nome,c.id,s.id";
+        $sql = "SELECT s.id sistema_id,s.cliente_id,c.nome cliente_nome,{$campoPendencia} pendente,s.usuario,s.senha,s.m3u_url,s.vencimento vencimento_anterior,s.url,COALESCE(b.nome,m.nome,'SEM_PROVEDOR') provedor FROM sistemas s INNER JOIN clientes c ON c.id=s.cliente_id {$pendencia} LEFT JOIN modelos_sistemas m ON m.id=s.modelo_id LEFT JOIN provedor_blocos b ON b.id=m.bloco_id LEFT JOIN LATERAL (SELECT r.elegivel_novamente_em FROM atualizacao_automatica_resultados r WHERE r.sistema_id=s.id ORDER BY r.verificado_em DESC LIMIT 1) ultimo ON TRUE WHERE (ultimo.elegivel_novamente_em IS NULL OR ultimo.elegivel_novamente_em<=clock_timestamp()) ORDER BY c.nome,c.id,s.id";
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -158,20 +158,60 @@ final class AtualizacaoAutomaticaPdoStore implements AtualizacaoAutomaticaExecut
 }
 
 final class AtualizacaoAutomaticaXtreamUpdater implements AtualizacaoAutomaticaSistemaUpdater {
-    public function __construct(private readonly PDO $pdo, private readonly int $timeout=15) {}
+    public function __construct(private readonly PDO $pdo, private readonly int $timeout=10, private readonly ?Closure $transporte=null, private readonly ?Closure $persistencia=null) {}
     public function atualizar(array $s): array {
-        $url=rtrim(trim((string)($s['url']??'')),'/'); $u=trim((string)($s['usuario']??'')); $p=trim((string)($s['senha']??''));
-        if ($url===''||$u===''||$p==='') return $this->falha('CREDENCIAIS_INCOMPLETAS','URL, usuario ou senha ausente');
-        $api=$url.'/player_api.php?username='.rawurlencode($u).'&password='.rawurlencode($p);
-        $res=@file_get_contents($api,false,stream_context_create(['http'=>['timeout'=>$this->timeout,'ignore_errors'=>true,'header'=>"User-Agent: TopMaster-Automacao/1.0\r\n"]]));
-        if (!is_string($res)||$res==='') return $this->falha('PROVEDOR_INDISPONIVEL','Provedor nao respondeu');
-        $dados=json_decode($res,true); $exp=is_array($dados)?($dados['user_info']['exp_date']??null):null;
+        $consulta=$this->prepararConsulta($s);
+        if ($consulta===null) return $this->falha('CREDENCIAIS_INCOMPLETAS','URL, usuario ou senha ausente');
+        $res=$this->consultar((string)$consulta['api']);
+        if (!$res['ok']) return $this->falha((string)$res['codigo'],(string)$res['detalhe']);
+        $dados=json_decode((string)$res['corpo'],true); $exp=is_array($dados)?($dados['user_info']['exp_date']??null):null;
         if (!is_numeric($exp)||(int)$exp<=0) return $this->falha('RESPOSTA_SEM_VENCIMENTO','Resposta sem vencimento valido');
         $v=(new DateTimeImmutable('@'.(int)$exp))->setTimezone(new DateTimeZone('America/Sao_Paulo'))->format('Y-m-d');
         $hoje=(new DateTimeImmutable('today',new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
-        $stmt=$this->pdo->prepare('UPDATE sistemas SET status=:status,exp_date=:exp,vencimento=:v WHERE id=:id');
-        $stmt->execute(['status'=>$v>=$hoje?'Active':'Expired','exp'=>(int)$exp,'v'=>$v,'id'=>(int)$s['sistema_id']]);
+        $valores=['status'=>$v>=$hoje?'Active':'Expired','exp'=>(int)$exp,'v'=>$v,'id'=>(int)$s['sistema_id']];
+        if ($this->persistencia!==null) { ($this->persistencia)($valores); }
+        else { $stmt=$this->pdo->prepare('UPDATE sistemas SET status=:status,exp_date=:exp,vencimento=:v WHERE id=:id'); $stmt->execute($valores); }
         return ['status'=>$v===($s['vencimento_anterior']??null)?'sem_alteracao':'atualizado','vencimento_novo'=>$v,'elegivel_novamente_em'=>'+24 hours'];
+    }
+
+    private function prepararConsulta(array $s): ?array {
+        $m3u=$this->uriValida($s['m3u_url']??null);
+        $url=$this->uriValida($s['url']??null);
+        $base=$this->baseUrl($url)??$this->baseUrl($m3u);
+        $u=$this->textoValido($s['usuario']??null)??$this->parametro($m3u,'username');
+        $p=$this->textoValido($s['senha']??null)??$this->parametro($m3u,'password');
+        if ($base===null||$u===null||$p===null) return null;
+        return ['api'=>$base.'/player_api.php?username='.rawurlencode($u).'&password='.rawurlencode($p)];
+    }
+
+    private function uriValida(mixed $valor): ?array {
+        $texto=$this->textoValido($valor); if ($texto===null) return null;
+        $partes=parse_url($texto);
+        if ((!is_array($partes)||empty($partes['scheme']))&&str_contains($texto,'.')&&!str_contains($texto,' ')&&!str_starts_with($texto,'/')) $partes=parse_url('http://'.$texto);
+        return is_array($partes)?$partes:null;
+    }
+    private function baseUrl(?array $uri): ?string {
+        if ($uri===null||empty($uri['scheme'])||empty($uri['host'])) return null;
+        $porta=isset($uri['port'])?':'.(int)$uri['port']:'';
+        return strtolower((string)$uri['scheme']).'://'.$uri['host'].$porta;
+    }
+    private function parametro(?array $uri,string $nome): ?string {
+        if ($uri===null||!isset($uri['query'])) return null; parse_str((string)$uri['query'],$query);
+        return $this->textoValido($query[$nome]??null);
+    }
+    private function textoValido(mixed $valor): ?string {
+        $texto=trim((string)($valor??'')); if ($texto==='') return null; $lower=strtolower($texto);
+        return in_array($lower,['pendente','null'],true)?null:$texto;
+    }
+    private function consultar(string $api): array {
+        if ($this->transporte!==null) return ($this->transporte)($api,$this->timeout);
+        $ch=curl_init($api);
+        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>true,CURLOPT_CONNECTTIMEOUT=>$this->timeout,CURLOPT_TIMEOUT=>$this->timeout,CURLOPT_HTTPGET=>true]);
+        $corpo=curl_exec($ch); $erro=curl_errno($ch); $http=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); curl_close($ch);
+        if ($erro!==0) return ['ok'=>false,'codigo'=>$erro===CURLE_OPERATION_TIMEDOUT?'TIMEOUT_PROVEDOR':'ERRO_TRANSPORTE_PROVEDOR','detalhe'=>$erro===CURLE_OPERATION_TIMEDOUT?'Tempo limite ao consultar provedor':'Falha segura de transporte ao consultar provedor'];
+        if ($http<200||$http>=300) return ['ok'=>false,'codigo'=>'HTTP_PROVEDOR','detalhe'=>'Provedor respondeu HTTP '.$http];
+        if (!is_string($corpo)||$corpo==='') return ['ok'=>false,'codigo'=>'PROVEDOR_INDISPONIVEL','detalhe'=>'Provedor nao respondeu'];
+        return ['ok'=>true,'corpo'=>$corpo];
     }
     private function falha(string $c,string $d): array { return ['status'=>'falha','codigo_falha'=>$c,'detalhe_falha'=>$d,'elegivel_novamente_em'=>'+1 hour']; }
 }

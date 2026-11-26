@@ -98,6 +98,69 @@ function gpAnalisarResposta(
     ];
 }
 
+function gpNomeVersaoHttp(int $versao): string
+{
+    foreach ([
+        'CURL_HTTP_VERSION_1_0',
+        'CURL_HTTP_VERSION_1_1',
+        'CURL_HTTP_VERSION_2_0',
+        'CURL_HTTP_VERSION_2TLS',
+        'CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE',
+        'CURL_HTTP_VERSION_3',
+    ] as $constante) {
+        if (defined($constante) && constant($constante) === $versao) {
+            return substr($constante, strlen('CURL_HTTP_VERSION_'));
+        }
+    }
+    return 'DESCONHECIDA_' . $versao;
+}
+
+function gpFamiliaIp(string $ip): ?string
+{
+    if ($ip === '') return null;
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) return 'IPv4';
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) return 'IPv6';
+    return 'desconhecida';
+}
+
+function gpProxyAmbientePresente(): bool
+{
+    foreach ([
+        'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+        'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+    ] as $nome) {
+        $valor = getenv($nome);
+        if (is_string($valor) && trim($valor) !== '') return true;
+    }
+    return false;
+}
+
+function gpMetadadosConexao(CurlHandle $ch): array
+{
+    $ipRemoto = (string) (curl_getinfo($ch, CURLINFO_PRIMARY_IP) ?: '');
+    $versaoCurl = curl_version();
+    $versaoHttp = (int) curl_getinfo($ch, CURLINFO_HTTP_VERSION);
+    $proxyUsado = defined('CURLINFO_USED_PROXY')
+        ? (bool) curl_getinfo($ch, constant('CURLINFO_USED_PROXY'))
+        : null;
+
+    return [
+        'remote_ip_family' => gpFamiliaIp($ipRemoto),
+        'remote_ip_sha256' => $ipRemoto === '' ? null : hash('sha256', $ipRemoto),
+        'remote_port' => (int) curl_getinfo($ch, CURLINFO_PRIMARY_PORT),
+        'http_version' => gpNomeVersaoHttp($versaoHttp),
+        'curl_version' => (string) ($versaoCurl['version'] ?? 'desconhecida'),
+        'tls_backend_version' => (string) ($versaoCurl['ssl_version'] ?? 'desconhecida'),
+        'dns_time_ms' => (int) round((float) curl_getinfo($ch, CURLINFO_NAMELOOKUP_TIME) * 1000),
+        'connect_time_ms' => (int) round((float) curl_getinfo($ch, CURLINFO_CONNECT_TIME) * 1000),
+        'first_byte_time_ms' => (int) round((float) curl_getinfo($ch, CURLINFO_STARTTRANSFER_TIME) * 1000),
+        'tls_verify_result' => (int) curl_getinfo($ch, CURLINFO_SSL_VERIFYRESULT),
+        'proxy_environment_present' => gpProxyAmbientePresente(),
+        'proxy_bypass_forced' => true,
+        'proxy_used' => $proxyUsado,
+    ];
+}
+
 function gpExecutarConsulta(string $api): array
 {
     $cabecalhos = [];
@@ -113,6 +176,8 @@ function gpExecutarConsulta(string $api): array
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT => 10,
         CURLOPT_HTTPGET => true,
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+        CURLOPT_NOPROXY => '*',
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_USERAGENT => GP_DIAGNOSTICO_USER_AGENT,
         CURLOPT_ENCODING => 'gzip',
@@ -139,6 +204,7 @@ function gpExecutarConsulta(string $api): array
     $redirecionamentos = (int) curl_getinfo($ch, CURLINFO_REDIRECT_COUNT);
     $urlEfetiva = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
     $tempo = (float) curl_getinfo($ch, CURLINFO_TOTAL_TIME);
+    $metadadosConexao = gpMetadadosConexao($ch);
     curl_close($ch);
 
     if ($erro !== 0 || !is_string($corpo)) {
@@ -147,7 +213,7 @@ function gpExecutarConsulta(string $api): array
             'transport_error_code' => $erro,
             'http_status' => $codigoHttp,
             'response_time_ms' => (int) round($tempo * 1000),
-        ];
+        ] + $metadadosConexao;
     }
 
     return ['transport_ok' => true] + gpAnalisarResposta(
@@ -158,7 +224,7 @@ function gpExecutarConsulta(string $api): array
         $urlEfetiva,
         $cabecalhos,
         $tempo
-    );
+    ) + $metadadosConexao;
 }
 
 function gpSelfTest(): void
@@ -189,7 +255,10 @@ function gpSelfTest(): void
         || $resultado['json_valid'] !== true
         || $resultado['user_info_exp_date_present'] !== true
         || array_key_exists('authorization', $resultado['safe_proxy_cdn_indicators'])
-        || array_key_exists('body', $resultado)) {
+        || array_key_exists('body', $resultado)
+        || gpFamiliaIp('192.0.2.10') !== 'IPv4'
+        || strlen(hash('sha256', '192.0.2.10')) !== 64
+        || gpNomeVersaoHttp(CURL_HTTP_VERSION_1_1) !== '1_1') {
         throw new RuntimeException('Falha na analise simulada e segura');
     }
 

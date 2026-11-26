@@ -32,7 +32,7 @@ CREATE TABLE modelos_sistemas (id SERIAL PRIMARY KEY, nome VARCHAR(150), url_pad
 CREATE TABLE sistemas (
  id SERIAL PRIMARY KEY, cliente_id INTEGER NOT NULL REFERENCES clientes(id),
  modelo_id INTEGER REFERENCES modelos_sistemas(id), usuario TEXT, senha TEXT,
- m3u_url TEXT, status TEXT, exp_date BIGINT, vencimento DATE, marcador VARCHAR(40)
+ url TEXT, m3u_url TEXT, status TEXT, exp_date BIGINT, vencimento DATE, marcador VARCHAR(40)
 );
 INSERT INTO admins(id) VALUES (1);
 INSERT INTO modelos_sistemas(id,nome,url_padrao) VALUES (1,'MODELO TESTE','https://invalid.test');
@@ -47,10 +47,12 @@ pg18Ok($pdo->query("SELECT to_regclass('public.atualizacao_automatica_config') I
 
 final class Pg18UpdaterFake implements AtualizacaoAutomaticaSistemaUpdater {
     public array $sistemas = [];
+    public array $urls = [];
     public array $falhar = [];
     public function atualizar(array $sistema): array {
         $id = (int)$sistema['sistema_id'];
         $this->sistemas[] = $id;
+        $this->urls[] = (string)($sistema['url'] ?? '');
         if (in_array($id, $this->falhar, true)) throw new RuntimeException('falha isolada');
         return ['status'=>'atualizado','vencimento_novo'=>'2027-01-01','elegivel_novamente_em'=>'+24 hours'];
     }
@@ -59,8 +61,8 @@ final class Pg18UpdaterFake implements AtualizacaoAutomaticaSistemaUpdater {
 function inserirCliente(PDO $pdo, string $nome, int $sistemas=1): int {
     $stmt=$pdo->prepare("INSERT INTO clientes(nome,marcador) VALUES (:nome,'preservar') RETURNING id");
     $stmt->execute(['nome'=>$nome]); $id=(int)$stmt->fetchColumn();
-    $sis=$pdo->prepare("INSERT INTO sistemas(cliente_id,modelo_id,usuario,senha,vencimento,marcador) VALUES (:cliente,1,'usuario-falso','senha-falsa',CURRENT_DATE,'preservar')");
-    for($i=0;$i<$sistemas;$i++) $sis->execute(['cliente'=>$id]);
+    $sis=$pdo->prepare("INSERT INTO sistemas(cliente_id,modelo_id,usuario,senha,url,vencimento,marcador) VALUES (:cliente,1,'usuario-falso','senha-falsa',:url,CURRENT_DATE,'preservar')");
+    for($i=0;$i<$sistemas;$i++) $sis->execute(['cliente'=>$id,'url'=>'https://sistema-'.$id.'-'.$i.'.test']);
     return $id;
 }
 function agendar(PDO $pdo, int $hora, int $versao): void {
@@ -78,10 +80,19 @@ agendar($pdo,0,1); $updater=new Pg18UpdaterFake();
 $resultado=(new AtualizacaoAutomaticaExecutor(new AtualizacaoAutomaticaPdoStore($pdo),$updater))->executarUmCiclo();
 pg18Ok($resultado['processados']===25, 'limite de 25 clientes distintos');
 pg18Ok(count($updater->sistemas)===26, 'todos os sistemas dos 25 clientes selecionados');
+pg18Ok(!in_array('https://invalid.test',$updater->urls,true), 'URL padrao do modelo nao e encaminhada ao atualizador');
+pg18Ok(count(array_unique($updater->urls))===26, 'URL propria de cada sistema e encaminhada ao atualizador');
 pg18Ok((int)$pdo->query("SELECT COUNT(*) FROM atualizacao_automatica_pendencias WHERE motivo='excedente'")->fetchColumn()>=2, 'excedentes e nome numerico entram em pendencias');
 pg18Ok((int)$pdo->query('SELECT COUNT(DISTINCT cliente_id) FROM atualizacao_automatica_resultados')->fetchColumn()===25, 'historico registra clientes processados');
 pg18Ok((int)$pdo->query('SELECT COUNT(*) FROM atualizacao_automatica_resultados')->fetchColumn()===26, 'historico registra cada sistema');
 pg18Ok((int)$pdo->query("SELECT COUNT(*) FROM clientes WHERE marcador='preservar'")->fetchColumn()===38 && (int)$pdo->query("SELECT COUNT(*) FROM sistemas WHERE marcador='preservar'")->fetchColumn()===39, 'dados e vinculos existentes sao preservados');
+$sistemaSemUrl=(int)$pdo->query('SELECT id FROM sistemas ORDER BY id LIMIT 1')->fetchColumn();
+$pdo->prepare('UPDATE sistemas SET url=NULL WHERE id=:id')->execute(['id'=>$sistemaSemUrl]);
+$antesSemUrl=$pdo->query("SELECT status,exp_date,vencimento FROM sistemas WHERE id={$sistemaSemUrl}")->fetch(PDO::FETCH_ASSOC);
+$falhaSemUrl=(new AtualizacaoAutomaticaXtreamUpdater($pdo))->atualizar(['sistema_id'=>$sistemaSemUrl,'url'=>null,'usuario'=>'usuario-falso','senha'=>'senha-falsa']);
+$depoisSemUrl=$pdo->query("SELECT status,exp_date,vencimento FROM sistemas WHERE id={$sistemaSemUrl}")->fetch(PDO::FETCH_ASSOC);
+pg18Ok($falhaSemUrl['status']==='falha' && $falhaSemUrl['codigo_falha']==='CREDENCIAIS_INCOMPLETAS', 'URL ausente falha sem fallback ou consulta externa');
+pg18Ok($antesSemUrl===$depoisSemUrl, 'URL ausente preserva data e status do sistema');
 
 foreach ([8=>['I','J'],9=>['K','L'],14=>['Q','R'],17=>['U','V'],19=>['X','Y']] as $hora=>$iniciais) {
     foreach($iniciais as $inicial) pg18Ok(str_contains(AtualizacaoAutomaticaGrade::grupoDaHora($hora),$inicial), "agrupamento {$inicial} na hora {$hora}");

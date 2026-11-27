@@ -8,6 +8,161 @@ interface TopGestorProbeApiClient
     public function fetchCustomer(string $customerId): array;
 }
 
+final class TopGestorRenewalCapture
+{
+    private const MAX_SCHEMA_ENTRIES = 64;
+    private const MAX_DEPTH = 3;
+    private const MAX_KEY_BYTES = 64;
+    private const IDENTIFIER_PATHS = [
+        'delivery_id', 'renewal.id', 'renewal_id', 'event_id', 'transaction_id',
+        'customer.id', 'data.customer.id', 'customer_id', 'product.id', 'access.id',
+    ];
+    private const CORRELATION_PATHS = [
+        'delivery_id', 'renewal.id', 'renewal_id', 'event_id', 'transaction_id',
+    ];
+    private const TEMPORAL_PATHS = [
+        'timestamp', 'created_at', 'occurred_at', 'sent_at', 'updated_at',
+        'renewal.created_at', 'renewal.updated_at', 'renewal.new_expires_at',
+    ];
+
+    public function __construct(private readonly string $correlationKey)
+    {
+        if (strlen($this->correlationKey) < 32) throw new InvalidArgumentException('CAPTURE_CORRELATION_KEY_INVALID');
+    }
+
+    public static function isEnabled(mixed $value): bool
+    {
+        return $value === '1';
+    }
+
+    public function usesKey(string $candidate): bool
+    {
+        return hash_equals($this->correlationKey, $candidate);
+    }
+
+    /** @param array<string, mixed> $payload @return array<string, mixed> */
+    public function inspect(array $payload): array
+    {
+        $schema = [];
+        $this->collectSchema($payload, '', 0, $schema);
+        $identifiers = [];
+        foreach (self::IDENTIFIER_PATHS as $path) {
+            [$present, $value] = $this->valueAtPath($payload, $path);
+            $descriptor = ['present'=>$present, 'type'=>$present ? $this->valueType($value) : 'absent'];
+            if ($present) $descriptor['format'] = $this->identifierFormat($value);
+            if ($present && in_array($path, self::CORRELATION_PATHS, true) && $this->scalarText($value) !== null) {
+                $descriptor['correlation_hmac'] = hash_hmac(
+                    'sha256',
+                    "topgestor-capture:{$path}\0" . $this->scalarText($value),
+                    $this->correlationKey
+                );
+            }
+            $identifiers[$path] = $descriptor;
+        }
+        $temporal = [];
+        foreach (self::TEMPORAL_PATHS as $path) {
+            [$present, $value] = $this->valueAtPath($payload, $path);
+            $temporal[$path] = $this->temporalDescriptor($present, $value);
+        }
+        return [
+            'schema'=>$schema,
+            'schema_entry_count'=>count($schema),
+            'schema_truncated'=>count($schema) >= self::MAX_SCHEMA_ENTRIES,
+            'identifiers'=>$identifiers,
+            'temporal_fields'=>$temporal,
+        ];
+    }
+
+    /** @return array{present:bool,type:string,format?:string} */
+    public function describeTemporalValue(mixed $value): array
+    {
+        return $this->temporalDescriptor($value !== null, $value);
+    }
+
+    /** @param array<string, mixed> $values @param list<array{path:string,type:string}> $schema */
+    private function collectSchema(array $values, string $prefix, int $depth, array &$schema): void
+    {
+        if ($depth > self::MAX_DEPTH || count($schema) >= self::MAX_SCHEMA_ENTRIES) return;
+        foreach ($values as $key=>$value) {
+            if (count($schema) >= self::MAX_SCHEMA_ENTRIES) return;
+            $safeKey = $this->sanitizeKey((string)$key);
+            $path = $prefix === '' ? $safeKey : $prefix . '.' . $safeKey;
+            $schema[] = ['path'=>$path, 'type'=>$this->valueType($value)];
+            if ($depth < self::MAX_DEPTH && is_array($value) && !array_is_list($value)) {
+                $this->collectSchema($value, $path, $depth + 1, $schema);
+            }
+        }
+    }
+
+    private function sanitizeKey(string $key): string
+    {
+        if ($key === '' || strlen($key) > self::MAX_KEY_BYTES || !preg_match('/\A[A-Za-z][A-Za-z0-9_-]*\z/', $key)) return 'invalid_key';
+        if (preg_match('/(?:pass|password|senha|token|secret|authorization|username|usuario|email|phone|telefone|whatsapp|nome|name|url)/i', $key)) {
+            return 'redacted_key';
+        }
+        return $key;
+    }
+
+    /** @param array<string, mixed> $payload @return array{bool,mixed} */
+    private function valueAtPath(array $payload, string $path): array
+    {
+        $cursor = $payload;
+        $parts = explode('.', $path);
+        foreach ($parts as $index=>$part) {
+            if (!is_array($cursor) || !array_key_exists($part, $cursor)) return [false, null];
+            $cursor = $cursor[$part];
+            if ($index < count($parts) - 1 && !is_array($cursor)) return [false, null];
+        }
+        return [true, $cursor];
+    }
+
+    /** @return array{present:bool,type:string,format?:string} */
+    private function temporalDescriptor(bool $present, mixed $value): array
+    {
+        if (!$present) return ['present'=>false, 'type'=>'absent'];
+        return ['present'=>true, 'type'=>$this->valueType($value), 'format'=>$this->temporalFormat($value)];
+    }
+
+    private function temporalFormat(mixed $value): string
+    {
+        if (is_int($value) && $value > 0) return $value >= 100000000000 ? 'unix_milliseconds' : 'unix_seconds';
+        if (!is_string($value)) return 'unexpected';
+        $text = trim($value);
+        if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $text)) return 'date_yyyy_mm_dd';
+        if (preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\z/', $text)) return 'iso8601';
+        if (preg_match('/\A[1-9]\d{9}\z/', $text)) return 'unix_seconds';
+        if (preg_match('/\A[1-9]\d{12}\z/', $text)) return 'unix_milliseconds';
+        return 'unexpected';
+    }
+
+    private function identifierFormat(mixed $value): string
+    {
+        if (is_int($value) && $value > 0) return 'positive_integer';
+        $text = $this->scalarText($value);
+        if ($text === null) return 'unexpected';
+        if (preg_match('/\A[1-9]\d*\z/', $text)) return 'positive_integer';
+        if (preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i', $text)) return 'uuid';
+        if (preg_match('/\A[A-Za-z][A-Za-z0-9_-]{7,127}\z/', $text)) return str_contains($text, '_') || str_contains($text, '-') ? 'prefixed_opaque' : 'opaque';
+        return 'unexpected';
+    }
+
+    private function valueType(mixed $value): string
+    {
+        return match (true) {
+            $value === null => 'null', is_array($value) && array_is_list($value) => 'array', is_array($value) => 'object',
+            is_string($value) => 'string', is_int($value) => 'integer', is_float($value) => 'number',
+            is_bool($value) => 'boolean', default => 'other',
+        };
+    }
+
+    private function scalarText(mixed $value): ?string
+    {
+        if (!is_string($value) && !is_int($value)) return null;
+        $text = trim((string)$value);
+        return $text !== '' ? $text : null;
+    }
+}
+
 final class TopGestorWebhookDiagnostic
 {
     private const MAX_BODY_BYTES = 65536;
@@ -166,8 +321,12 @@ final class TopGestorWebhookProbe
         private readonly string $expectedProductName = 'Sistema GP',
         private readonly ?string $baselineExpiration = null,
         ?Closure $logger = null,
+        private readonly ?TopGestorRenewalCapture $renewalCapture = null,
     ) {
         if (strlen($this->webhookSecret) < 32) throw new InvalidArgumentException('WEBHOOK_SECRET_INVALID');
+        if ($this->renewalCapture !== null && $this->renewalCapture->usesKey($this->webhookSecret)) {
+            throw new InvalidArgumentException('CAPTURE_CORRELATION_KEY_MUST_BE_DISTINCT');
+        }
         if ($this->expectedProductId === '') throw new InvalidArgumentException('EXPECTED_PRODUCT_ID_INVALID');
         $this->logger = $logger ?? static fn (array $metadata) => error_log((string) json_encode($metadata, JSON_UNESCAPED_SLASHES));
     }
@@ -201,12 +360,16 @@ final class TopGestorWebhookProbe
         $deliveryId = $this->scalarText($payload['delivery_id'] ?? null);
         $customerId = $this->extractCustomerId($payload);
         $safeLog = $baseLog + ['signature_valid'=>true,'event'=>$event,'delivery_id_present'=>$deliveryId !== null,
-            'delivery_id_hash'=>$deliveryId !== null ? $this->safeHash($deliveryId) : null,
-            'customer_id_present'=>$customerId !== null,'customer_id_hash'=>$customerId !== null ? $this->safeHash($customerId) : null,
-            'payload_keys'=>array_values(array_map('strval', array_keys($payload)))];
+            'customer_id_present'=>$customerId !== null];
+        if ($this->renewalCapture === null) {
+            $safeLog += ['delivery_id_hash'=>$deliveryId !== null ? $this->safeHash($deliveryId) : null,
+                'customer_id_hash'=>$customerId !== null ? $this->safeHash($customerId) : null,
+                'payload_keys'=>array_values(array_map('strval', array_keys($payload)))];
+        }
         if ($event !== self::EVENT) { ($this->logger)($safeLog + ['result'=>'event_ignored']); return $this->respond(202, 'EVENT_IGNORED', $requestId); }
         if ($deliveryId === null) { ($this->logger)($safeLog + ['result'=>'delivery_id_missing']); return $this->respond(400, 'DELIVERY_ID_MISSING', $requestId); }
         if ($customerId !== self::ALLOWED_CUSTOMER_ID) { ($this->logger)($safeLog + ['result'=>'customer_rejected']); return $this->respond(403, 'CUSTOMER_REJECTED', $requestId); }
+        $captureMetadata = $this->renewalCapture?->inspect($payload);
         if (!$this->deliveryGuard->claim($deliveryId)) { ($this->logger)($safeLog + ['result'=>'duplicate_ignored']); return $this->respond(200, 'DUPLICATE_IGNORED', $requestId); }
 
         try {
@@ -223,6 +386,15 @@ final class TopGestorWebhookProbe
             if ($productId !== $this->expectedProductId || $productName !== $this->expectedProductName) throw new RuntimeException('MAIN_PRODUCT_NOT_GP');
             if ($expiration === null) throw new RuntimeException('MAIN_EXPIRATION_INVALID');
             $changed = $this->baselineExpiration !== null ? $expiration !== $this->baselineExpiration : null;
+            if ($this->renewalCapture !== null) {
+                $comparison = $this->baselineExpiration === null ? null : ($expiration <=> $this->baselineExpiration);
+                ($this->logger)($safeLog + ['result'=>'renewal_capture_confirmed','capture'=>$captureMetadata,
+                    'rest_updated_at'=>$this->renewalCapture->describeTemporalValue($updatedAt),
+                    'expiration_vs_baseline'=>$comparison === null ? null : ($comparison === 0 ? 'equal' : ($comparison < 0 ? 'before' : 'after')),
+                    'database_accessed'=>false]);
+                return ['status'=>200,'body'=>['accepted'=>false,'authenticated'=>true,'processed'=>false,
+                    'code'=>'RENEWAL_CAPTURE_CONFIRMED','request_id'=>$requestId,'database_accessed'=>false]];
+            }
             ($this->logger)($safeLog + ['result'=>'probe_confirmed','main_product_id_hash'=>$this->safeHash($productId),
                 'main_product_name'=>$productName,'main_expiration'=>$expiration,'source_updated_at_present'=>$updatedAt !== null,
                 'baseline_present'=>$this->baselineExpiration !== null,'expiration_changed_from_baseline'=>$changed,'database_accessed'=>false]);
@@ -230,8 +402,9 @@ final class TopGestorWebhookProbe
                 'main_product'=>$productName,'main_expiration'=>$expiration,'expiration_changed_from_baseline'=>$changed,'database_accessed'=>false]];
         } catch (Throwable $exception) {
             $this->deliveryGuard->release($deliveryId);
-            ($this->logger)($safeLog + ['result'=>'probe_failed','failure_code'=>$this->safeFailureCode($exception),'database_accessed'=>false]);
-            return $this->respond(502, 'PROBE_FAILED', $requestId);
+            ($this->logger)($safeLog + ['result'=>$this->renewalCapture !== null ? 'renewal_capture_rest_failed' : 'probe_failed',
+                'capture'=>$captureMetadata,'failure_code'=>$this->safeFailureCode($exception),'database_accessed'=>false]);
+            return $this->respond(502, $this->renewalCapture !== null ? 'RENEWAL_CAPTURE_REST_FAILED' : 'PROBE_FAILED', $requestId);
         }
     }
 

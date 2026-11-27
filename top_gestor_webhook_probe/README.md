@@ -27,6 +27,8 @@ Optional:
 - `TOPGESTOR_BASELINE_EXPIRATION` (`Y-m-d`, comparison only)
 - `TOPGESTOR_DELIVERY_DIR` (default under `/tmp`)
 - `TOPGESTOR_DIAGNOSTIC_MODE` (default disabled; use exactly `1` only for the controlled diagnostic)
+- `TOPGESTOR_RENEWAL_CAPTURE_MODE` (default disabled; use exactly `1` for one controlled `customer.renewed` capture)
+- `TOPGESTOR_CAPTURE_CORRELATION_KEY` (at least 32 bytes; required only in renewal capture mode and distinct from the webhook secret)
 
 ## Endpoints
 
@@ -87,6 +89,36 @@ an uncontrolled retry storm during the one-event diagnostic; it does not mark
 the event as authenticated or processed by the probe. Empty or oversized bodies
 return 413. After the observation, disable diagnostic mode before any normal
 validation test.
+
+## Sanitized renewal capture mode
+
+Renewal capture is disabled by default. Enable it temporarily with:
+
+```text
+TOPGESTOR_RENEWAL_CAPTURE_MODE=1
+TOPGESTOR_CAPTURE_CORRELATION_KEY=<independent random secret with at least 32 bytes>
+```
+
+The correlation key must be independent from `TOPGESTOR_WEBHOOK_SECRET`. The
+mode preserves normal HMAC validation and only inspects `customer.renewed`
+after `delivery_id` is present and customer `143528` is confirmed. Other
+events, including `webhook.test`, keep the existing `202 EVENT_IGNORED`
+behavior and never call the REST API.
+
+The capture records bounded, sanitized schema paths and value types; presence
+and format categories for known identifiers and temporal fields; keyed,
+domain-separated correlation HMACs only for delivery or renewal identifiers;
+the format of REST `updated_at`; and whether the current expiration is
+`equal`, `before`, or `after` the configured baseline. It never logs payload
+values, raw identifiers, credentials, tokens, secrets, signatures, complete
+bodies, or personal data. It never accesses a database or changes expiration.
+
+A successful capture returns HTTP 200 with `accepted=false`,
+`authenticated=true`, `processed=false`, and code
+`RENEWAL_CAPTURE_CONFIRMED`. A REST failure returns HTTP 502 with
+`RENEWAL_CAPTURE_REST_FAILED`, releases the ephemeral delivery claim, and does
+not convert the failure into success. Remove the mode variable immediately
+after the controlled capture.
 
 ## Synthetic test
 

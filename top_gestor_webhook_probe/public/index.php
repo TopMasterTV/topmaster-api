@@ -54,10 +54,16 @@ try {
         getenv('TOPGESTOR_DELIVERY_DIR') ?: sys_get_temp_dir() . '/topgestor-webhook-probe-deliveries', $secret
     );
     $baseline = getenv('TOPGESTOR_BASELINE_EXPIRATION');
+    $captureMode = TopGestorRenewalCapture::isEnabled(getenv('TOPGESTOR_RENEWAL_CAPTURE_MODE'));
+    $renewalCapture = $captureMode
+        ? new TopGestorRenewalCapture(requiredProbeEnvironment('TOPGESTOR_CAPTURE_CORRELATION_KEY'))
+        : null;
     $probe = new TopGestorWebhookProbe(
         $apiClient, $guard, $secret, requiredProbeEnvironment('TOPGESTOR_EXPECTED_GP_PRODUCT_ID'),
         getenv('TOPGESTOR_EXPECTED_GP_PRODUCT_NAME') ?: 'Sistema GP',
         is_string($baseline) && trim($baseline) !== '' ? trim($baseline) : null,
+        null,
+        $renewalCapture,
     );
     $result = $probe->handle($method, $path, $safeHeaders, $rawBody);
     http_response_code($result['status']);

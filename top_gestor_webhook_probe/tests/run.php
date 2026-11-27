@@ -7,9 +7,14 @@ require_once dirname(__DIR__) . '/src/Probe.php';
 final class FakeProbeApi implements TopGestorProbeApiClient
 {
     public int $calls = 0;
-    /** @param array<string, mixed> $response */
-    public function __construct(private readonly array $response) {}
-    public function fetchCustomer(string $customerId): array { $this->calls++; return $this->response; }
+    /** @param array<string, mixed>|Throwable $response */
+    public function __construct(private readonly array|Throwable $response) {}
+    public function fetchCustomer(string $customerId): array
+    {
+        $this->calls++;
+        if ($this->response instanceof Throwable) throw $this->response;
+        return $this->response;
+    }
 }
 
 function ok(bool $condition, string $message): void
@@ -45,11 +50,18 @@ function cleanup(string $directory): void
     if (is_dir($directory)) rmdir($directory);
 }
 
-function probe(FakeProbeApi $api, string $directory, string $secret, array &$logs): TopGestorWebhookProbe
+function probe(
+    FakeProbeApi $api,
+    string $directory,
+    string $secret,
+    array &$logs,
+    ?TopGestorRenewalCapture $capture = null,
+): TopGestorWebhookProbe
 {
     return new TopGestorWebhookProbe(
         $api, new TopGestorProbeDeliveryGuard($directory, $secret), $secret, '4409', 'Sistema GP', '2027-01-25',
         static function (array $metadata) use (&$logs): void { $logs[] = $metadata; },
+        $capture,
     );
 }
 
@@ -70,6 +82,9 @@ $validHeaders = $jsonHeaders + ['X-Hub-Signature-256'=>$event['signature']];
 ok(TopGestorWebhookDiagnostic::isEnabled(false)===false,'modo diagnostico desativado por padrao');
 ok(TopGestorWebhookDiagnostic::isEnabled('true')===false,'modo diagnostico exige valor exato');
 ok(TopGestorWebhookDiagnostic::isEnabled('1')===true,'modo diagnostico ativado somente por 1');
+ok(TopGestorRenewalCapture::isEnabled(false)===false,'captura de renovacao desativada por padrao');
+ok(TopGestorRenewalCapture::isEnabled('true')===false,'captura exige valor exato');
+ok(TopGestorRenewalCapture::isEnabled('1')===true,'captura ativada somente por 1');
 
 $diagnostic=diagnostic($jsonHeaders,'{}');$diagnosticLog=$diagnostic['logs'][0]??[];
 ok(($diagnosticLog['hmac_header_present']??true)===false,'diagnostico identifica HMAC ausente');
@@ -104,6 +119,83 @@ ok(($diagnosticLog['database_accessed']??true)===false,'diagnostico nao acessa P
 $diagnostic=diagnostic($jsonHeaders,str_repeat('A',65537));
 ok($diagnostic['result']['status']===413,'corpo acima do limite rejeitado no diagnostico');
 ok((($diagnostic['logs'][0]??[])['validation_result']??'')==='DIAGNOSTIC_BODY_REJECTED','rejeicao por tamanho registrada');
+
+// Sanitized customer.renewed capture.
+$correlationKey='TEST_ONLY_DISTINCT_CORRELATION_KEY_32_BYTES_MINIMUM';
+$capture=new TopGestorRenewalCapture($correlationKey);
+$sameKeyRejected=false;
+$sameKeyDirectory=directory('same-key');
+try {
+    $sameKeyLogs=[];
+    probe(new FakeProbeApi(fixture()),$sameKeyDirectory,$secret,$sameKeyLogs,new TopGestorRenewalCapture($secret));
+} catch (InvalidArgumentException $exception) {
+    $sameKeyRejected=$exception->getMessage()==='CAPTURE_CORRELATION_KEY_MUST_BE_DISTINCT';
+}
+ok($sameKeyRejected,'chave de correlacao igual ao segredo HMAC rejeitada');
+cleanup($sameKeyDirectory);
+$captureBody=json_encode([
+    'event'=>'customer.renewed','delivery_id'=>'delivery_capture_opaque_001','customer'=>[
+        'id'=>143528,'name'=>'PERSONAL_CAPTURE_FIXTURE','email'=>'private@example.invalid',
+    ],
+    'renewal'=>[
+        'id'=>'renewal_capture_opaque_001','created_at'=>'2026-11-27T12:00:00Z',
+        'new_expires_at'=>'2027-02-25','username'=>'PRIVATE_USER','password'=>'PRIVATE_PASSWORD',
+    ],
+    'timestamp'=>1764244800,'token'=>'PRIVATE_TOKEN','accesses'=>[['username'=>'PRIVATE_ACCESS_USER']],
+],JSON_UNESCAPED_SLASHES);
+if(!is_string($captureBody))throw new RuntimeException('CAPTURE_FIXTURE_INVALID');
+$captureSignature='sha256='.hash_hmac('sha256',$captureBody,$secret);
+$captureHeaders=$jsonHeaders+['X-Hub-Signature-256'=>$captureSignature];
+$dir=directory('capture-valid');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$captureHeaders,$captureBody);
+ok($result['status']===200&&($result['body']['code']??'')==='RENEWAL_CAPTURE_CONFIRMED','captura valida confirmada');
+ok(($result['body']['accepted']??true)===false&&($result['body']['processed']??true)===false,'captura nao aceita nem processa renovacao');
+ok(($result['body']['authenticated']??false)===true,'captura confirma HMAC valido');
+ok($api->calls===1,'captura consulta REST uma vez');
+$captureLog=$logs[0]??[];$encodedCapture=json_encode($logs);
+ok(($captureLog['expiration_vs_baseline']??'')==='after','vencimento comparado somente como after');
+ok((($captureLog['rest_updated_at']??[])['format']??'')==='iso8601','updated_at registrado somente por formato');
+ok((($captureLog['capture']['temporal_fields']['timestamp']??[])['format']??'')==='unix_seconds','timestamp classificado sem valor');
+ok((($captureLog['capture']['identifiers']['renewal.id']??[])['format']??'')==='prefixed_opaque','identificador de renovacao classificado');
+$deliveryCorrelation=$captureLog['capture']['identifiers']['delivery_id']['correlation_hmac']??'';
+ok(is_string($deliveryCorrelation)&&strlen($deliveryCorrelation)===64,'identificador correlacionado por HMAC');
+ok($deliveryCorrelation!==hash('sha256','delivery_capture_opaque_001'),'correlacao nao usa hash simples');
+ok($deliveryCorrelation!==hash_hmac('sha256','delivery_capture_opaque_001',$secret),'correlacao nao reutiliza segredo HMAC do webhook');
+foreach(['PERSONAL_CAPTURE_FIXTURE','private@example.invalid','PRIVATE_USER','PRIVATE_PASSWORD','PRIVATE_TOKEN','PRIVATE_ACCESS_USER',$captureBody,$captureSignature,'delivery_capture_opaque_001','renewal_capture_opaque_001','2026-11-27T12:00:00Z'] as $forbidden){
+    ok(is_string($encodedCapture)&&!str_contains($encodedCapture,$forbidden),'dado sensivel ausente do log de captura');
+}
+ok(($captureLog['database_accessed']??true)===false,'captura nao acessa PostgreSQL');cleanup($dir);
+
+// Optional structural fields absent.
+$dir=directory('capture-minimal');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$validHeaders,$event['body']);$minimalLog=$logs[0]??[];
+ok($result['status']===200,'captura aceita campos opcionais ausentes');
+ok((($minimalLog['capture']['identifiers']['renewal.id']??[])['present']??true)===false,'identificador opcional ausente registrado');
+ok((($minimalLog['capture']['temporal_fields']['timestamp']??[])['present']??true)===false,'timestamp opcional ausente registrado');cleanup($dir);
+
+// Capture mode still rejects invalid authentication and unauthorized input before REST.
+$dir=directory('capture-signature');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$jsonHeaders+['X-Hub-Signature-256'=>'sha256='.str_repeat('0',64)],$captureBody);
+ok($result['status']===401&&$api->calls===0,'captura rejeita HMAC invalido sem REST');cleanup($dir);
+
+$foreignCapture=signed($secret,999999,'foreign-capture');
+$dir=directory('capture-foreign');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$jsonHeaders+['X-Hub-Signature-256'=>$foreignCapture['signature']],$foreignCapture['body']);
+ok($result['status']===403&&$api->calls===0,'captura rejeita cliente diferente sem REST');
+ok(!array_key_exists('capture',$logs[0]??[]),'cliente diferente nao gera estrutura de captura');cleanup($dir);
+
+$otherCapture=signed($secret,143528,'test-delivery','webhook.test');
+$dir=directory('capture-other');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$jsonHeaders+['X-Hub-Signature-256'=>$otherCapture['signature']],$otherCapture['body']);
+ok($result['status']===202&&($result['body']['code']??'')==='EVENT_IGNORED','webhook.test preserva HTTP 202');
+ok($api->calls===0&&!array_key_exists('capture',$logs[0]??[]),'evento diferente nao captura nem consulta REST');cleanup($dir);
+
+// REST failure remains safe and retryable.
+$dir=directory('capture-rest-failure');$logs=[];$api=new FakeProbeApi(new RuntimeException('TOPGESTOR_API_TRANSPORT_FAILED'));$service=probe($api,$dir,$secret,$logs,$capture);
+$result=$service->handle('POST','/webhooks/top-gestor',$captureHeaders,$captureBody);
+ok($result['status']===502&&($result['body']['code']??'')==='RENEWAL_CAPTURE_REST_FAILED','falha REST retorna erro seguro');
+ok($api->calls===1&&($result['body']['accepted']??true)===false,'falha REST nao aceita renovacao');
+$failedLog=json_encode($logs);ok(is_string($failedLog)&&!str_contains($failedLog,$captureBody)&&!str_contains($failedLog,$captureSignature),'falha REST nao registra corpo ou assinatura');cleanup($dir);
 
 // Valid event.
 $dir = directory('valid'); $logs=[]; $api=new FakeProbeApi(fixture()); $service=probe($api,$dir,$secret,$logs);

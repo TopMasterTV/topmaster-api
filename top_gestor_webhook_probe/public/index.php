@@ -24,19 +24,6 @@ function requiredProbeEnvironment(string $name): string
 }
 
 try {
-    $allowedCustomer = requiredProbeEnvironment('TOPGESTOR_ALLOWED_CUSTOMER_ID');
-    if (!hash_equals(TopGestorWebhookProbe::ALLOWED_CUSTOMER_ID, $allowedCustomer)) throw new RuntimeException('PROBE_CONFIGURATION_INVALID');
-    $secret = requiredProbeEnvironment('TOPGESTOR_WEBHOOK_SECRET');
-    $apiClient = new TopGestorProbeCurlApiClient(requiredProbeEnvironment('TOPGESTOR_API_TOKEN'));
-    $guard = new TopGestorProbeDeliveryGuard(
-        getenv('TOPGESTOR_DELIVERY_DIR') ?: sys_get_temp_dir() . '/topgestor-webhook-probe-deliveries', $secret
-    );
-    $baseline = getenv('TOPGESTOR_BASELINE_EXPIRATION');
-    $probe = new TopGestorWebhookProbe(
-        $apiClient, $guard, $secret, requiredProbeEnvironment('TOPGESTOR_EXPECTED_GP_PRODUCT_ID'),
-        getenv('TOPGESTOR_EXPECTED_GP_PRODUCT_NAME') ?: 'Sistema GP',
-        is_string($baseline) && trim($baseline) !== '' ? trim($baseline) : null,
-    );
     $headers = function_exists('getallheaders') ? getallheaders() : [];
     if (!is_array($headers)) {
         $headers = [];
@@ -51,6 +38,27 @@ try {
     foreach ($headers as $name=>$value) if (is_string($name) && is_string($value)) $safeHeaders[$name] = $value;
     $rawBody = file_get_contents('php://input');
     if (!is_string($rawBody)) throw new RuntimeException('REQUEST_BODY_UNAVAILABLE');
+
+    if (TopGestorWebhookDiagnostic::isEnabled(getenv('TOPGESTOR_DIAGNOSTIC_MODE'))) {
+        $result = (new TopGestorWebhookDiagnostic())->observe($method, $path, $safeHeaders, $rawBody);
+        http_response_code($result['status']);
+        echo json_encode($result['body'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $allowedCustomer = requiredProbeEnvironment('TOPGESTOR_ALLOWED_CUSTOMER_ID');
+    if (!hash_equals(TopGestorWebhookProbe::ALLOWED_CUSTOMER_ID, $allowedCustomer)) throw new RuntimeException('PROBE_CONFIGURATION_INVALID');
+    $secret = requiredProbeEnvironment('TOPGESTOR_WEBHOOK_SECRET');
+    $apiClient = new TopGestorProbeCurlApiClient(requiredProbeEnvironment('TOPGESTOR_API_TOKEN'));
+    $guard = new TopGestorProbeDeliveryGuard(
+        getenv('TOPGESTOR_DELIVERY_DIR') ?: sys_get_temp_dir() . '/topgestor-webhook-probe-deliveries', $secret
+    );
+    $baseline = getenv('TOPGESTOR_BASELINE_EXPIRATION');
+    $probe = new TopGestorWebhookProbe(
+        $apiClient, $guard, $secret, requiredProbeEnvironment('TOPGESTOR_EXPECTED_GP_PRODUCT_ID'),
+        getenv('TOPGESTOR_EXPECTED_GP_PRODUCT_NAME') ?: 'Sistema GP',
+        is_string($baseline) && trim($baseline) !== '' ? trim($baseline) : null,
+    );
     $result = $probe->handle($method, $path, $safeHeaders, $rawBody);
     http_response_code($result['status']);
     echo json_encode($result['body'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

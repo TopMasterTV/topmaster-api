@@ -53,10 +53,57 @@ function probe(FakeProbeApi $api, string $directory, string $secret, array &$log
     );
 }
 
+/** @return array{result:array{status:int,body:array<string,mixed>},logs:list<array<string,mixed>>} */
+function diagnostic(array $headers, string $body): array
+{
+    $logs = [];
+    $service = new TopGestorWebhookDiagnostic(static function (array $metadata) use (&$logs): void { $logs[] = $metadata; });
+    return ['result'=>$service->observe('POST','/webhooks/top-gestor',$headers,$body),'logs'=>$logs];
+}
+
 $secret = 'TEST_ONLY_WEBHOOK_SECRET_WITH_AT_LEAST_32_BYTES';
 $jsonHeaders = ['Content-Type'=>'application/json'];
 $event = signed($secret);
 $validHeaders = $jsonHeaders + ['X-Hub-Signature-256'=>$event['signature']];
+
+// Diagnostic mode is opt-in and never authenticates or processes a request.
+ok(TopGestorWebhookDiagnostic::isEnabled(false)===false,'modo diagnostico desativado por padrao');
+ok(TopGestorWebhookDiagnostic::isEnabled('true')===false,'modo diagnostico exige valor exato');
+ok(TopGestorWebhookDiagnostic::isEnabled('1')===true,'modo diagnostico ativado somente por 1');
+
+$diagnostic=diagnostic($jsonHeaders,'{}');$diagnosticLog=$diagnostic['logs'][0]??[];
+ok(($diagnosticLog['hmac_header_present']??true)===false,'diagnostico identifica HMAC ausente');
+ok(($diagnosticLog['hmac_header_format']??'')==='absent','formato ausente registrado');
+ok(($diagnosticLog['content_type']??'')==='application_json','tipo de conteudo categorizado sem valor livre');
+ok(($diagnostic['result']['body']['accepted']??true)===false,'diagnostico nao aceita entrega');
+ok(($diagnostic['result']['body']['authenticated']??true)===false,'diagnostico nao autentica entrega');
+ok(($diagnostic['result']['body']['processed']??true)===false,'diagnostico nao processa entrega');
+
+$diagnostic=diagnostic($jsonHeaders+['X-Hub-Signature-256'=>$event['signature']],$event['body']);
+$diagnosticLog=$diagnostic['logs'][0]??[];
+ok(($diagnosticLog['hmac_header_present']??false)===true,'diagnostico identifica HMAC presente');
+ok(($diagnosticLog['hmac_header_format']??'')==='sha256_equals_hex_64_lowercase','formato HMAC esperado identificado');
+
+$unexpectedSignature='not-a-supported-signature-format';
+$diagnostic=diagnostic($jsonHeaders+['X-Hub-Signature-256'=>$unexpectedSignature],'{}');
+ok((($diagnostic['logs'][0]??[])['hmac_header_format']??'')==='unexpected','formato HMAC inesperado identificado');
+
+$headerSecret='TEST_ONLY_HEADER_SECRET_MUST_NOT_APPEAR';
+$diagnostic=diagnostic($jsonHeaders+['X-Webhook-Secret'=>$headerSecret],'{}');
+ok((($diagnostic['logs'][0]??[])['webhook_secret_header_present']??false)===true,'X-Webhook-Secret presente identificado');
+
+$diagnostic=diagnostic($jsonHeaders+['X-Hub-Signature-256'=>$event['signature'],'X-Webhook-Secret'=>$headerSecret],$event['body']);
+$diagnosticLog=$diagnostic['logs'][0]??[];
+ok(($diagnosticLog['hmac_header_present']??false)===true&&($diagnosticLog['webhook_secret_header_present']??false)===true,'ambos os cabecalhos identificados');
+$encodedDiagnostic=json_encode($diagnostic['logs']);
+ok(is_string($encodedDiagnostic)&&!str_contains($encodedDiagnostic,$event['signature']),'assinatura ausente dos logs diagnosticos');
+ok(is_string($encodedDiagnostic)&&!str_contains($encodedDiagnostic,$headerSecret),'segredo ausente dos logs diagnosticos');
+ok(is_string($encodedDiagnostic)&&!str_contains($encodedDiagnostic,$event['body']),'corpo ausente dos logs diagnosticos');
+ok(($diagnosticLog['database_accessed']??true)===false,'diagnostico nao acessa PostgreSQL');
+
+$diagnostic=diagnostic($jsonHeaders,str_repeat('A',65537));
+ok($diagnostic['result']['status']===413,'corpo acima do limite rejeitado no diagnostico');
+ok((($diagnostic['logs'][0]??[])['validation_result']??'')==='DIAGNOSTIC_BODY_REJECTED','rejeicao por tamanho registrada');
 
 // Valid event.
 $dir = directory('valid'); $logs=[]; $api=new FakeProbeApi(fixture()); $service=probe($api,$dir,$secret,$logs);

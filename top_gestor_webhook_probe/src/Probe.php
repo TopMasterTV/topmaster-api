@@ -8,6 +8,83 @@ interface TopGestorProbeApiClient
     public function fetchCustomer(string $customerId): array;
 }
 
+final class TopGestorWebhookDiagnostic
+{
+    private const MAX_BODY_BYTES = 65536;
+    /** @var Closure(array<string, mixed>):void */
+    private readonly Closure $logger;
+
+    public function __construct(?Closure $logger = null)
+    {
+        $this->logger = $logger ?? static fn (array $metadata) => error_log((string) json_encode($metadata, JSON_UNESCAPED_SLASHES));
+    }
+
+    public static function isEnabled(mixed $value): bool
+    {
+        return $value === '1';
+    }
+
+    /** @param array<string, string> $headers @return array{status:int, body:array<string, mixed>} */
+    public function observe(string $method, string $path, array $headers, string $rawBody): array
+    {
+        $requestId = bin2hex(random_bytes(12));
+        $normalized = [];
+        foreach ($headers as $name => $value) $normalized[strtolower(trim($name))] = trim($value);
+        $signature = $normalized['x-hub-signature-256'] ?? '';
+        $webhookSecretPresent = ($normalized['x-webhook-secret'] ?? '') !== '';
+        $contentTypeValue = strtolower(trim(explode(';', $normalized['content-type'] ?? '', 2)[0]));
+        $contentType = match ($contentTypeValue) {
+            '' => 'absent',
+            'application/json' => 'application_json',
+            default => 'other',
+        };
+        $bodyBytes = strlen($rawBody);
+        $resultCode = 'DIAGNOSTIC_OBSERVED_NOT_AUTHENTICATED';
+        $status = 200;
+
+        if (strtoupper($method) !== 'POST' || $path !== '/webhooks/top-gestor') {
+            $resultCode = 'DIAGNOSTIC_ROUTE_REJECTED';
+            $status = 404;
+        } elseif ($bodyBytes === 0 || $bodyBytes > self::MAX_BODY_BYTES) {
+            $resultCode = 'DIAGNOSTIC_BODY_REJECTED';
+            $status = 413;
+        }
+
+        ($this->logger)([
+            'component' => 'top_gestor_webhook_probe',
+            'mode' => 'diagnostic',
+            'request_id' => $requestId,
+            'hmac_header_present' => $signature !== '',
+            'hmac_header_format' => $this->signatureFormat($signature),
+            'webhook_secret_header_present' => $webhookSecretPresent,
+            'content_type' => $contentType,
+            'body_bytes' => $bodyBytes,
+            'validation_result' => $resultCode,
+            'authenticated' => false,
+            'processed' => false,
+            'database_accessed' => false,
+        ]);
+
+        return ['status' => $status, 'body' => [
+            'accepted' => false,
+            'authenticated' => false,
+            'processed' => false,
+            'code' => $resultCode,
+            'request_id' => $requestId,
+            'database_accessed' => false,
+        ]];
+    }
+
+    private function signatureFormat(string $signature): string
+    {
+        if ($signature === '') return 'absent';
+        if (preg_match('/\Asha256=[a-f0-9]{64}\z/', $signature)) return 'sha256_equals_hex_64_lowercase';
+        if (preg_match('/\Asha256=[A-Fa-f0-9]{64}\z/', $signature)) return 'sha256_equals_hex_64_mixed_case';
+        if (preg_match('/\A[A-Fa-f0-9]{64}\z/', $signature)) return 'hex_64_without_algorithm';
+        return 'unexpected';
+    }
+}
+
 final class TopGestorProbeCurlApiClient implements TopGestorProbeApiClient
 {
     private const API_BASE = 'https://topgestor.me/api/v1';
@@ -100,7 +177,7 @@ final class TopGestorWebhookProbe
     {
         $requestId = bin2hex(random_bytes(12));
         $baseLog = ['component'=>'top_gestor_webhook_probe','request_id'=>$requestId,'method'=>strtoupper($method),
-            'path_valid'=>$path === '/webhooks/top-gestor','body_bytes'=>strlen($rawBody),'body_sha256'=>hash('sha256', $rawBody)];
+            'path_valid'=>$path === '/webhooks/top-gestor','body_bytes'=>strlen($rawBody)];
         if (strtoupper($method) !== 'POST' || $path !== '/webhooks/top-gestor') return $this->respond(404, 'NOT_FOUND', $requestId);
         if (strlen($rawBody) === 0 || strlen($rawBody) > self::MAX_BODY_BYTES) {
             ($this->logger)($baseLog + ['result'=>'body_rejected']); return $this->respond(413, 'BODY_REJECTED', $requestId);

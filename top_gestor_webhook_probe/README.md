@@ -26,6 +26,7 @@ Optional:
 - `TOPGESTOR_EXPECTED_GP_PRODUCT_NAME` (default `Sistema GP`)
 - `TOPGESTOR_BASELINE_EXPIRATION` (`Y-m-d`, comparison only)
 - `TOPGESTOR_DELIVERY_DIR` (default under `/tmp`)
+- `TOPGESTOR_DIAGNOSTIC_MODE` (default disabled; use exactly `1` only for the controlled diagnostic)
 
 ## Endpoints
 
@@ -64,6 +65,28 @@ X-Hub-Signature-256: sha256=<64 lowercase hexadecimal characters>
 It calculates HMAC-SHA-256 over the exact raw body and uses `hash_equals`.
 Before deployment, compare this with the contract displayed by the Top Gestor
 panel. Stop if the panel documents a different canonical format.
+
+## Header diagnostic mode
+
+Diagnostic mode is disabled by default. To enable it temporarily, set:
+
+```text
+TOPGESTOR_DIAGNOSTIC_MODE=1
+```
+
+Remove the variable or set any value other than exactly `1` to disable it. In
+this mode the receiver is observation-only: it never validates a request as
+authenticated, parses the JSON, claims a delivery, calls the REST API, or
+accesses a database. It logs only whether the two authentication headers are
+present, the structural HMAC format, a fixed content-type category, body byte count,
+and a validation result code. Header values and body content are never logged.
+
+For a non-empty body within the size limit it returns HTTP 200 with
+`accepted=false`, `authenticated=false`, and `processed=false`. The 200 avoids
+an uncontrolled retry storm during the one-event diagnostic; it does not mark
+the event as authenticated or processed by the probe. Empty or oversized bodies
+return 413. After the observation, disable diagnostic mode before any normal
+validation test.
 
 ## Synthetic test
 

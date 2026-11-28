@@ -157,11 +157,17 @@ ok(($captureLog['expiration_vs_baseline']??'')==='after','vencimento comparado s
 ok((($captureLog['rest_updated_at']??[])['format']??'')==='iso8601','updated_at registrado somente por formato');
 ok((($captureLog['capture']['temporal_fields']['timestamp']??[])['format']??'')==='unix_seconds','timestamp classificado sem valor');
 ok((($captureLog['capture']['identifiers']['renewal.id']??[])['format']??'')==='prefixed_opaque','identificador de renovacao classificado');
+$mainIndicators=$captureLog['main_access_indicators']??[];
+ok(($mainIndicators['usuario']['present']??false)===true&&($mainIndicators['usuario']['filled']??false)===true,'usuario principal indicado somente por booleanos');
+ok(($mainIndicators['password']['present']??false)===true&&($mainIndicators['password']['filled']??false)===true,'password principal indicado somente por booleanos');
+ok(($mainIndicators['senha']['present']??true)===false&&($mainIndicators['senha']['filled']??true)===false,'senha principal ausente indicada somente por booleanos');
+ok(($mainIndicators['data_de_vencimento']['present']??false)===true&&($mainIndicators['data_de_vencimento']['valid_format']??false)===true,'vencimento principal indicado como valido');
+ok(($mainIndicators['campos_no_mesmo_objeto_principal']??false)===true,'campos confirmados no mesmo objeto principal');
 $deliveryCorrelation=$captureLog['capture']['identifiers']['delivery_id']['correlation_hmac']??'';
 ok(is_string($deliveryCorrelation)&&strlen($deliveryCorrelation)===64,'identificador correlacionado por HMAC');
 ok($deliveryCorrelation!==hash('sha256','delivery_capture_opaque_001'),'correlacao nao usa hash simples');
 ok($deliveryCorrelation!==hash_hmac('sha256','delivery_capture_opaque_001',$secret),'correlacao nao reutiliza segredo HMAC do webhook');
-foreach(['PERSONAL_CAPTURE_FIXTURE','private@example.invalid','PRIVATE_USER','PRIVATE_PASSWORD','PRIVATE_TOKEN','PRIVATE_ACCESS_USER',$captureBody,$captureSignature,'delivery_capture_opaque_001','renewal_capture_opaque_001','2026-11-27T12:00:00Z'] as $forbidden){
+foreach(['PERSONAL_CAPTURE_FIXTURE','private@example.invalid','PRIVATE_USER','PRIVATE_PASSWORD','PRIVATE_TOKEN','PRIVATE_ACCESS_USER','USER_FIXTURE','PASSWORD_FIXTURE','2027-02-25',$captureBody,$captureSignature,'delivery_capture_opaque_001','renewal_capture_opaque_001','2026-11-27T12:00:00Z'] as $forbidden){
     ok(is_string($encodedCapture)&&!str_contains($encodedCapture,$forbidden),'dado sensivel ausente do log de captura');
 }
 ok(($captureLog['database_accessed']??true)===false,'captura nao acessa PostgreSQL');cleanup($dir);
@@ -173,15 +179,52 @@ ok($result['status']===200,'captura aceita campos opcionais ausentes');
 ok((($minimalLog['capture']['identifiers']['renewal.id']??[])['present']??true)===false,'identificador opcional ausente registrado');
 ok((($minimalLog['capture']['temporal_fields']['timestamp']??[])['present']??true)===false,'timestamp opcional ausente registrado');cleanup($dir);
 
+// Main access indicators cover absent, empty, unexpected and alternate password fields without values.
+$indicatorCases=[];
+$absentFixture=fixture();
+unset($absentFixture['data']['usuario'],$absentFixture['data']['password'],$absentFixture['data']['data_de_vencimento']);
+$indicatorCases[]=['absent',$absentFixture,false,false,false,false,false,false,false,false,502];
+$emptyFixture=fixture();
+$emptyFixture['data']['usuario']='  ';$emptyFixture['data']['password']='';$emptyFixture['data']['senha']=' ';
+$indicatorCases[]=['empty',$emptyFixture,true,false,true,false,true,false,true,false,200];
+$unexpectedCaptureFixture=fixture();
+$unexpectedCaptureFixture['data']['usuario']=['unexpected'];$unexpectedCaptureFixture['data']['password']=123;$unexpectedCaptureFixture['data']['senha']=true;
+$indicatorCases[]=['unexpected',$unexpectedCaptureFixture,true,false,true,false,true,false,true,false,200];
+$senhaCaptureFixture=fixture();
+unset($senhaCaptureFixture['data']['password']);$senhaCaptureFixture['data']['senha']='SENHA_CAPTURE_FIXTURE';
+$indicatorCases[]=['senha',$senhaCaptureFixture,true,true,false,false,true,true,true,true,200];
+$invalidDateFixture=fixture();$invalidDateFixture['data']['data_de_vencimento']='2027-02-30';
+$indicatorCases[]=['invalid-date',$invalidDateFixture,true,true,true,true,false,false,false,false,502];
+foreach($indicatorCases as [$caseName,$caseFixture,$usuarioPresent,$usuarioFilled,$passwordPresent,$passwordFilled,$senhaPresent,$senhaFilled,$dateValid,$sameObject,$expectedStatus]){
+    $caseEvent=signed($secret,143528,'indicator-'.$caseName);
+    $caseHeaders=$jsonHeaders+['X-Hub-Signature-256'=>$caseEvent['signature']];
+    $dir=directory('indicator-'.$caseName);$logs=[];$api=new FakeProbeApi($caseFixture);$service=probe($api,$dir,$secret,$logs,$capture);
+    $result=$service->handle('POST','/webhooks/top-gestor',$caseHeaders,$caseEvent['body']);$indicatorLog=$logs[0]??[];
+    $indicators=$indicatorLog['main_access_indicators']??[];
+    ok($result['status']===$expectedStatus&&$api->calls===1,'caso '.$caseName.' reutiliza uma unica REST');
+    ok(($indicators['usuario']['present']??null)===$usuarioPresent&&($indicators['usuario']['filled']??null)===$usuarioFilled,'caso '.$caseName.' descreve usuario');
+    ok(($indicators['password']['present']??null)===$passwordPresent&&($indicators['password']['filled']??null)===$passwordFilled,'caso '.$caseName.' descreve password');
+    ok(($indicators['senha']['present']??null)===$senhaPresent&&($indicators['senha']['filled']??null)===$senhaFilled,'caso '.$caseName.' descreve senha');
+    ok(($indicators['data_de_vencimento']['valid_format']??null)===$dateValid,'caso '.$caseName.' valida formato do vencimento');
+    ok(($indicators['campos_no_mesmo_objeto_principal']??null)===$sameObject,'caso '.$caseName.' descreve mesmo objeto principal');
+    $caseLog=json_encode($logs);
+    foreach(['USER_FIXTURE','PASSWORD_FIXTURE','SENHA_CAPTURE_FIXTURE','2027-02-25','2027-02-30'] as $privateValue){
+        ok(is_string($caseLog)&&!str_contains($caseLog,$privateValue),'caso '.$caseName.' nao registra valores privados');
+    }
+    cleanup($dir);
+}
+
 // Capture mode still rejects invalid authentication and unauthorized input before REST.
 $dir=directory('capture-signature');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
 $result=$service->handle('POST','/webhooks/top-gestor',$jsonHeaders+['X-Hub-Signature-256'=>'sha256='.str_repeat('0',64)],$captureBody);
-ok($result['status']===401&&$api->calls===0,'captura rejeita HMAC invalido sem REST');cleanup($dir);
+ok($result['status']===401&&$api->calls===0,'captura rejeita HMAC invalido sem REST');
+ok(!array_key_exists('main_access_indicators',$logs[0]??[]),'HMAC invalido nao gera indicadores REST');cleanup($dir);
 
 $foreignCapture=signed($secret,999999,'foreign-capture');
 $dir=directory('capture-foreign');$logs=[];$api=new FakeProbeApi(fixture());$service=probe($api,$dir,$secret,$logs,$capture);
 $result=$service->handle('POST','/webhooks/top-gestor',$jsonHeaders+['X-Hub-Signature-256'=>$foreignCapture['signature']],$foreignCapture['body']);
 ok($result['status']===403&&$api->calls===0,'captura rejeita cliente diferente sem REST');
+ok(!array_key_exists('main_access_indicators',$logs[0]??[]),'cliente diferente nao gera indicadores REST');
 ok(!array_key_exists('capture',$logs[0]??[]),'cliente diferente nao gera estrutura de captura');cleanup($dir);
 
 $otherCapture=signed($secret,143528,'test-delivery','webhook.test');

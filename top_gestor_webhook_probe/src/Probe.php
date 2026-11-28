@@ -372,6 +372,7 @@ final class TopGestorWebhookProbe
         $captureMetadata = $this->renewalCapture?->inspect($payload);
         if (!$this->deliveryGuard->claim($deliveryId)) { ($this->logger)($safeLog + ['result'=>'duplicate_ignored']); return $this->respond(200, 'DUPLICATE_IGNORED', $requestId); }
 
+        $mainAccessIndicators = null;
         try {
             $response = $this->apiClient->fetchCustomer(self::ALLOWED_CUSTOMER_ID);
             $customer = $response['data'] ?? $response;
@@ -383,6 +384,7 @@ final class TopGestorWebhookProbe
             $expiration = $this->validDate($customer['data_de_vencimento'] ?? null);
             $updatedAt = $this->scalarText($customer['updated_at'] ?? null);
             if ($apiCustomerId !== self::ALLOWED_CUSTOMER_ID) throw new RuntimeException('API_CUSTOMER_MISMATCH');
+            if ($this->renewalCapture !== null) $mainAccessIndicators = $this->mainAccessIndicators($customer);
             if ($productId !== $this->expectedProductId || $productName !== $this->expectedProductName) throw new RuntimeException('MAIN_PRODUCT_NOT_GP');
             if ($expiration === null) throw new RuntimeException('MAIN_EXPIRATION_INVALID');
             $changed = $this->baselineExpiration !== null ? $expiration !== $this->baselineExpiration : null;
@@ -391,6 +393,7 @@ final class TopGestorWebhookProbe
                 ($this->logger)($safeLog + ['result'=>'renewal_capture_confirmed','capture'=>$captureMetadata,
                     'rest_updated_at'=>$this->renewalCapture->describeTemporalValue($updatedAt),
                     'expiration_vs_baseline'=>$comparison === null ? null : ($comparison === 0 ? 'equal' : ($comparison < 0 ? 'before' : 'after')),
+                    'main_access_indicators'=>$mainAccessIndicators,
                     'database_accessed'=>false]);
                 return ['status'=>200,'body'=>['accepted'=>false,'authenticated'=>true,'processed'=>false,
                     'code'=>'RENEWAL_CAPTURE_CONFIRMED','request_id'=>$requestId,'database_accessed'=>false]];
@@ -402,8 +405,10 @@ final class TopGestorWebhookProbe
                 'main_product'=>$productName,'main_expiration'=>$expiration,'expiration_changed_from_baseline'=>$changed,'database_accessed'=>false]];
         } catch (Throwable $exception) {
             $this->deliveryGuard->release($deliveryId);
-            ($this->logger)($safeLog + ['result'=>$this->renewalCapture !== null ? 'renewal_capture_rest_failed' : 'probe_failed',
-                'capture'=>$captureMetadata,'failure_code'=>$this->safeFailureCode($exception),'database_accessed'=>false]);
+            $failureLog = $safeLog + ['result'=>$this->renewalCapture !== null ? 'renewal_capture_rest_failed' : 'probe_failed',
+                'capture'=>$captureMetadata,'failure_code'=>$this->safeFailureCode($exception),'database_accessed'=>false];
+            if ($mainAccessIndicators !== null) $failureLog['main_access_indicators'] = $mainAccessIndicators;
+            ($this->logger)($failureLog);
             return $this->respond(502, $this->renewalCapture !== null ? 'RENEWAL_CAPTURE_REST_FAILED' : 'PROBE_FAILED', $requestId);
         }
     }
@@ -432,6 +437,30 @@ final class TopGestorWebhookProbe
         $errors = DateTimeImmutable::getLastErrors();
         if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) return null;
         return $date->format('Y-m-d') === $text ? $text : null;
+    }
+    /** @param array<string, mixed> $customer @return array<string, mixed> */
+    private function mainAccessIndicators(array $customer): array
+    {
+        $usuario = $this->textIndicator($customer, 'usuario');
+        $password = $this->textIndicator($customer, 'password');
+        $senha = $this->textIndicator($customer, 'senha');
+        $expirationPresent = array_key_exists('data_de_vencimento', $customer);
+        $expirationValid = $expirationPresent && $this->validDate($customer['data_de_vencimento']) !== null;
+        return [
+            'usuario'=>$usuario,
+            'password'=>$password,
+            'senha'=>$senha,
+            'data_de_vencimento'=>['present'=>$expirationPresent,'valid_format'=>$expirationValid],
+            'campos_no_mesmo_objeto_principal'=>$usuario['filled']
+                && ($password['filled'] || $senha['filled'])
+                && $expirationValid,
+        ];
+    }
+    /** @param array<string, mixed> $source @return array{present:bool,filled:bool} */
+    private function textIndicator(array $source, string $field): array
+    {
+        $present = array_key_exists($field, $source);
+        return ['present'=>$present,'filled'=>$present && is_string($source[$field]) && trim($source[$field]) !== ''];
     }
     private function safeHash(string $value): string { return hash_hmac('sha256', $value, $this->webhookSecret); }
     private function safeFailureCode(Throwable $exception): string
